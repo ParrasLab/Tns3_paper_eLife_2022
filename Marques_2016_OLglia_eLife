@@ -1,0 +1,640 @@
+setwd("C:/...")
+#install.packages("dplyr")
+#install.packages("Seurat")
+#install.packages("sctransform")
+#install.packages("ggplot2")
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(sctransform)
+library(dplyr)
+
+
+#import data from GSE75330: "GSE75330_Marques_et_al_mol_counts2.txt"
+Marques2016.data <- read.table("GSE75330_Marques_et_al_mol_counts2.txt", 
+                        sep="", header = TRUE, row.names = 1, quote="")
+
+dim(Marques2016.data) #23556  5069
+            
+                
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+            #>= 10 cells (~0.1% of the data). Keep all cells with at least 200 detected genes
+Marques2016 <- CreateSeuratObject(counts = Marques2016.data, project = "10X_Marques2016", 
+                           min.cells = 10, min.features = 200)
+    dim(Marques2016.data) #23556  5069
+    dim(Marques2016) #15649  5069 > restricting to >10 cells per gene and > 500 genes per cells we reduce data 
+    #from 23,556 to 15,659
+    
+# store mitochondrial percentage in object meta data    
+ Marques2016 <- PercentageFeatureSet(Marques2016, pattern = "^MT-", col.name = "percent.mt")
+
+ #Apply sctransform normalization
+Marques2016 <- SCTransform(Marques2016, vars.to.regress = "percent.mt", verbose = FALSE)
+
+#Run PCA
+Marques2016 <- RunPCA(Marques2016, verbose = FALSE)
+
+#Visulize loadings 1 to 4
+VizDimLoadings(Marques2016, dims = 1:2, reduction = "pca")
+
+#Visulize components PC1-PC2
+DimPlot(Marques2016, dims = c(1, 2), reduction = "pca")
+
+#DETERMINE THE DIMENSIONALITY OF THE DATASET
+
+ElbowPlot(Marques2016) #here, one can observe an 'elbow' around PC16-17, suggesting that the majority of true signal is captured in the first 10 PCs.
+ggsave("Marques2016_ElbowPlot_PCs.pdf", width = 8.27, height = 6.00)
+
+
+#Find Neighbours
+Marques2016 <- FindNeighbors(Marques2016, dims = 1:30, verbose = FALSE)
+
+# Find Clusters
+Marques2016 <- FindClusters(Marques2016, resolution = 0.6, verbose = FALSE)
+#it produces 15 clusters
+
+################################################# 
+#Run  dimensionality reduction: UMAP        
+#################################################       
+
+Marques2016 <- RunUMAP(Marques2016, dims = 1:20, verbose = FALSE)
+
+DimPlot(Marques2016, reduction = "umap", label = TRUE, label.size = 7, pt.size = 0.5) + NoLegend()
+ggsave("Marques2016_UMAP.pdf", width = 8.27, height = 6.00)
+#define best dimension for newly generated UMAP
+
+#############################################################  
+#Finding differentially expressed genes (cluster biomarkers)
+############################################################# 
+ Marques2016.markers <- FindAllMarkers(object = Marques2016, only.pos = TRUE, min.pct = 0.25, 
+                                     thresh.use = 0.25)
+#extract top markers
+markers10 <- Marques2016.markers %>% group_by(cluster) %>% top_n(10, avg_log2FC)
+  head(markers10)
+     
+
+  #heatmap of the 10 markers of each cluster by expression levels      
+
+  DoHeatmap(Marques2016, features = markers10$gene, slot = "scale.data", size = 3.5, draw.lines = TRUE) +
+           scale_fill_viridis(option = "E") 
+         
+         
+  
+  #########################################      
+  #IDENTIFYING UNIQUE MARKERS EXPRESSION
+  ########################################
+  
+  markers_cluster0 <- subset(markers10, cluster == "0", select = gene)
+  markers_cluster0 <- as.vector(markers_cluster0$gene)
+  markers_cluster0
+  # [1] "Ctps"    "Ank3"    "Tmem141" "Fam214a" "Ddr1"    "Ttyh1"   "Nfasc"  
+  # [8] "Prom1"   "Opalin"  "Ctsl" 
+  FeaturePlot(Marques2016, features = markers_cluster0, pt.size = 0.1, cols = c("grey", "red"), ncol = 2) 
+  ggsave("markers_cluster0.pdf", width = 8.27, height = 11.69)
+  
+  markers_cluster1 <- subset(markers10, cluster == "1", select = gene)
+  markers_cluster1 <- as.vector(markers_cluster1$gene)
+  markers_cluster1
+  # [1] "Trf"   "Klk6"  "S100b" "Cd59a" "Anln"  "Anxa5" "Apod"  "Sepp1" "Ldhb" 
+  # [10] "Mgst3"  
+  FeaturePlot(Marques2016, features = markers_cluster1, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster2.pdf", width = 8.27, height = 11.69)
+  
+  markers_cluster2 <- subset(markers10, cluster == "2", select = gene)
+  markers_cluster2 <- as.vector(markers_cluster2$gene)
+  markers_cluster2
+  #[1] "Tmsb4x" "Fth1"   "Sepw1"  "Cfl1"   "Tubb4a" "Apod"   "Sepp1"  "Tppp3" 
+  # [9] "Tmsb10" "Klk6" 
+  FeaturePlot(Marques2016, features = markers_cluster2, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster2.pdf", width = 8.27, height = 11.69)
+  
+  markers_cluster3 <- subset(markers10, cluster == "3", select = gene)
+  markers_cluster3 <- as.vector(markers_cluster3$gene)
+  markers_cluster3
+  #[1]  "Meg3"   "Snhg11" "Scg2"   "Resp18" "Atp1b1" "Stmn3"  "Stmn2"  "Snap25"
+  # [9] "Zwint"  "Sst"            
+  FeaturePlot(Marques2016, features = markers_cluster3, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster3.pdf", width = 8.27, height = 11.69)
+  
+  markers_cluster4 <- subset(markers10, cluster == "4", select = gene)
+  markers_cluster4 <- as.vector(markers_cluster4$gene)
+  markers_cluster4
+  #"Ptgds"   "Sept4"   "Qdpr"    "Gstp1"   "Mal"     "Tmod1"   "Glul"   
+  # [8] "Car2"    "Grb14"   "Slc38a2"
+  FeaturePlot(Marques2016, features = markers_cluster4, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster4.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster5 <- subset(markers10, cluster == "5", select = gene)
+  markers_cluster5 <- as.vector(markers_cluster5$gene)
+  markers_cluster5
+  #[1] "Il33"      "Car2"      "Qdpr"      "Tubb4a"    "Ndrg1"     "Neat1"    
+  #[7] "Serpinb1a" "Apoe"      "Glul"      "Ptgds"  "
+  FeaturePlot(Marques2016, features = markers_cluster5, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster5.pdf", width = 8.27, height = 11.69)
+  
+  markers_cluster6 <- subset(markers10, cluster == "6", select = gene)
+  markers_cluster6 <- as.vector(markers_cluster6$gene)
+  markers_cluster6
+  #[1] "9630013A20Rik" "Itpr2"         "Slc1a1"        "Bcan"         
+  # [5] "Frmd4a"        "Mpzl1"         "Fyn"           "Marcks"       
+  # [9] "Gpr17"         "Tmem2"  
+
+  FeaturePlot(Marques2016, features = markers_cluster6, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster6.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster7 <- subset(markers10, cluster == "7", select = gene)
+  markers_cluster7 <- as.vector(markers_cluster7$gene)
+  markers_cluster7
+  # [1] "Ptprz1"        "Pdgfra"        "Cspg5"         "Vcan"         
+  # [5] "Cspg4"         "Ednrb"         "3110035E14Rik" "Lrp1"         
+  # [9] "Serpine2"      "Fabp7" 
+
+  FeaturePlot(Marques2016, features = markers_cluster7, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster7.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster8 <- subset(markers10, cluster == "8", select = gene)
+  markers_cluster8 <- as.vector(markers_cluster8$gene)
+  markers_cluster8
+  # [1] "Fosb"   "Fos"    "Btg2"   "Egr1"   "Klf4"   "Zfp36"  "Jun"    "Dusp1" 
+  # [9] "Dnajb1" "Arc"   
+
+  FeaturePlot(Marques2016, features = markers_cluster8, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster8.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster9 <- subset(markers10, cluster == "9", select = gene)
+  markers_cluster9 <- as.vector(markers_cluster9$gene)
+  markers_cluster9
+  # "Nrgn"       "Grin2b"     "Camk2a"     "Ryr2"       "Arpp21"    
+  # [6] "D3Bwg0562e" "Camk2b"     "Syt1"       "Atp2b1"     "Chn1"     
+  
+  FeaturePlot(Marques2016, features = markers_cluster9, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster9.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster10 <- subset(markers10, cluster == "10", select = gene)
+  markers_cluster10 <- as.vector(markers_cluster10$gene)
+  markers_cluster10
+  # [1] "Igf2"   "Dcn"    "Vtn"    "Col1a2" "Spp1"   "Igfbp2" "Itih5"  "Cyr61" 
+  # [9] "Atp1a2" "Sparc"
+
+  FeaturePlot(Marques2016, features = markers_cluster10, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster10.pdf", width = 8.27, height = 11.69)
+  
+  
+  markers_cluster11 <- subset(markers10, cluster == "11", select = gene)
+  markers_cluster11 <- as.vector(markers_cluster11$gene)
+  markers_cluster11
+  # [1] "C1qa"  "Csf1r" "C1qb"  "Ctss"  "Ccl3"  "Ccl7"  "Ccl4"  "Hexb"  "Cst3" 
+  # [10] "Apoe" 
+ 
+  FeaturePlot(Marques2016, features = markers_cluster11, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster11.pdf", width = 8.27, height = 11.69)
+  
+  
+
+  markers_cluster12 <- subset(markers10, cluster == "12", select = gene)
+  markers_cluster12 <- as.vector(markers_cluster12$gene)
+  markers_cluster12
+  # [1]  "Nrgn"       "Grin2b"     "Camk2a"     "Ryr2"       "Arpp21"     "D3Bwg0562e" "Camk2b"     "Syt1"      
+  #[9] "Atp2b1"     "Chn1"  
+  
+  FeaturePlot(Marques2016, features = markers_cluster12, pt.size = 0.1, cols = c("grey", "red"), ncol = 2)
+  ggsave("markers_cluster12.pdf", width = 8.27, height = 11.69)
+
+
+
+
+
+#################################################################################
+# Markers from the Marques 2016 Science paper (from suppl last figure heatmap)
+#################################################################################
+#OPC markers
+#Tmem255b, Pcdh15, Emid1, Tmem100, Ednrb, Fabp7, Rlbp1, Cspg4, Pdgfra
+#COP markers
+#Cyp2j6, Epb4.1l2, Timp4, Bcas1, Vcan, Neu4, Gpr17, Bmp4, Ust,
+#NFOL markers
+#Rassf10, Rasgef1b, Bcan, Tcf7l2, Mpzl1, Dct, Pik3r3, Frmd4a, Rgs16, Steap1, Brca1, 1810041L15Rik, Tmem163, Rap2a, Alox5, Itpr2, Fam107b, Cnksr3, 9630013A20Rik, Rras2, Tmem2, Ninj1, Ptprb,
+#NFOL + MFOL markers (= iOL-early mOL markers)
+#Fam214a , Ddr1, Lpar1, Ttyh1, Plekha1, Ctps, Prom1, Il23a, Tmem141,
+#MFOL markers
+#Fam214a, Ddr1, Lpar1, Ttyh1, Plekha1, Ctps, Wfdc18, Slk, Grb14, Slc9a3r2, Thbs3, Igsf8, Nudt4, Lect1, 9430020K01Rik, Birc1
+#MFOL + MOL markers (= pan-mOL markers)
+#Cryab, Opalin, Sept4, Csrp1, Cldn11, Kcna1, Qdpr, Mog, Cntn2, Mal
+#MOL markers 
+#Apoe, Grm3, Neat1, C030029H02Rik, Il33, Ptgds, 
+#MOL3/2 markers
+#Nid1, Hopx, Pmp22, Cdkn1c, S100b, Rab37, Anxa5, Klk6, 
+#MOL1/4 markers
+#Arc, Hspa1a, Zfp36, Tob1, Klf4, Egr2, Btg2, Dnajb1, Dusp1, Fosb, Hspa1b, Ier2, 
+
+################################################################################################
+#Asigning identity of each cluster based on markers of different stages and cell types 
+################################################################################################
+##############################
+#OPC markers > cluster #9
+##############################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features =c( "Pdgfra", "Cspg5",  "Cspg4",  "Ascl1","Emid1","Tmem255b","Ncan", "Rlbp1", "Kcnip3", "Rgcc",
+    "Sdc3","Ednrb", "Pcdh15", "Sox11", "Tmem100", "Spon1", "Gria3", "Traf4", "Matn4", "3110035E14Rik" ))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold")) 
+ggsave("DotPlot_Marques2016_OPC_markers.pdf", width = 12, height = 6)
+
+
+
+################################
+#iOL1 markers > cluster #5 
+################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Tmem2", "Cnksr3", "Rgs16",  "Tnfrsf21",  "Pik3r3", "Rnf122", 
+    "Rnd2", "Rasgef1b", "Parvb",  "Ddc","Sema4d","Capn5","Arf4","Idh1", "Peli1","Marcks"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold")) 
+ggsave("DotPlot_Marques2016_iOL1_markers.pdf", width = 12, height = 6)  
+
+
+################################
+#iOL2 markers > cluster #1
+################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Il23a", "Ninj1", "Onecut2","Sema4f", "St8sia3","Ctps","Tmem141","Rell1","Pcdh17",
+    "Gnb4", "Ctsl",  "Sox2ot", "Gng12",  "Ttyh1",  "Plat",  "Marcksl1"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_iOL2_markers.pdf", width = 12, height = 6) 
+
+
+################################
+#Astro markers > cluster #14  
+################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Rarres2", "Ccdc153", "Gja1","Vim", "Aqp4","Mlc1", "Mia", "Enkur", "Sox9", 
+    "Pltp", "Tm4sf1", "Sdc4", "Fgfr3", "Slc4a4", "Agt", "S1pr1", "Ezr", "Aldoc"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_astro_markers.pdf", width = 12, height = 6)
+
+
+
+################################
+#microglia markers > cluster #11 
+################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features =c("C1qa", "Csf1r", "Cx3cr1", "Lyz2", "Pf4", "C1qb", "Cd14", "Tyrobp", 
+    "Fcgr3",  "Laptm5", "Aif1",  "Ctss", "Ly86", "F13a1", "Ccl12", "C1qc", 
+    "Ccl7", "Hpgds", "Mrc1", "Rnase4", "Ccl3", "Rgs1", "Gpr34", "Ctsc", "Apoe"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_microgia_markers.pdf", width = 12, height = 6)
+
+
+
+################################
+#MFOL markers > cluster ... 
+################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Tmod1","Slc9a3r2","Igsf8","Hs3st1", "Mal", "Pdlim2","Opalin", "Grb14",  
+    "Lgi3",  "Cldn11" ))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_MFOL_markers.pdf", width = 12, height = 6)  
+
+
+
+############################################################
+#neuronal markers > cluster 6 & 11
+############################################################
+
+p <- DotPlot(object = Marques2016, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c( "Snhg11", "Scg2", "Resp18", "Atp1b1", "Stmn3", "Stmn2", "Tmem130", "Celf4", "Gap43",
+    "Gprasp2", "Zcchc12", "Syt4", "Vsnl1", "Ndrg4", "Syt1", "Tagln3", "Gprasp1", "Eno2", 
+    "Scn2a1", "Atp1a3", "Caly", "Hap1", "6330403K07Rik", "Pnck", "Meg3"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_neuronal_markers.pdf", width = 12, height = 6)  
+
+  
+################################
+#VLMC markers > cluster 13
+#################################
+VLMCmarkers <- c("S100a11", "Col1a1", "Lum", "Dcn", "Aox3", "Bgn", "Osr1", "Gjb2", "Ccl19", "Cd74", "Slc47a1", "Lypd2", 
+  "Ctxn3", "Nnat", "Spp1")
+p <- DotPlot(object = Marques2016,  dot.scale = 12, features =  VLMCmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_Marques2016_VLMC_markers_markers.pdf", width = 8, height = 6)
+
+##################################
+#Endothelial markers > cluster# 14
+##################################
+Endothmarkers  <- c("Acta2", "Angpt1", "Des", "Aoc3", "Slc38a5", "Pdgfb", "Nos3", "Eltd1", "Pecam1", "Ctla2a", "Emcn", "Sema3c", "Tek", 
+  "Cytl1", "Bmx", "Sema3f", "Gja5")
+p <- DotPlot(object = Marques2016,  dot.scale = 12, features = Endothmarkers ) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold")) 
+ggsave("DotPlot_Marques2016_Endothelial_markers.pdf", width = 8, height = 6)
+
+
+################################################################################################################
+# Creating Marques2016 object directly from Marques2016 by removing non-OLglial clusters (clusters #2,8,9,10,11)
+################################################################################################################
+#Isolating the clusters of "OLglial clusters"
+OLglia1 <- subset(Marques2016, idents = c("6" ,"11","12", "13","14", "15"), invert = TRUE)
+
+dim(OLglia1) #15649  4130
+
+
+
+#IDENTIFICATION OF HIGHLY VARIABLE FEATURES
+OLglia1 <- FindVariableFeatures(OLglia1, selection.method = "vst", nfeatures = 2000)
+#SCALING THE DATA
+all.genes <- rownames(OLglia1)
+OLglia1 <- ScaleData(OLglia1, features = all.genes)
+#PERFORM LINEAR DIMENSIONAL REDUCTION (PCA)
+OLglia1 <- RunPCA(OLglia1, features = VariableFeatures(object = OLglia1))
+#CLUSTER THE CELLS
+OLglia1 <- FindNeighbors(OLglia1, dims = 1:15)
+OLglia1 <- FindClusters(OLglia1, resolution = 0.4) #9 clusters
+
+ElbowPlot(OLglia1)
+#RUN NON LINEAR DIMENSIONAL REDUCTION (UMAP)
+
+dim = 15 # Dimension chosen
+l = dim-5 # how many dimension before chosen dimension
+h = dim+6# how many dimension after chosen dimension
+p <- lapply(l:h, FUN = function(d) { # loop through dimension l to h)
+  print(d) # print current dimension
+  OLglia1 <- RunUMAP(OLglia1, dims = 1:d, verbose = FALSE) # run umap using current dimension
+  p1 <- DimPlot(OLglia1, label = TRUE, pt.size = 0.5) + NoLegend() + ggtitle(paste0("dimension ", d)) # Generate DimPlot using umap with current dim
+  p1
+})
+
+CombinePlots(p)
+
+ggsave(filename = "umap_dims_11_21_OLglia1.png", plot = gridExtra::arrangeGrob(grobs = p, ncol = 4), 
+  device = "png", width = 6000, height = 4000, units = "px", dpi = 300, limitsize = FALSE)
+
+
+OLglia1 <- RunUMAP(OLglia1, dims = 1:11)
+DimPlot(OLglia1, reduction = "umap", label= T, label.size = 7) + NoLegend()
+ggsave("OLglia1_clusters.pdf", width = 8.27, height = 6.00)  
+
+
+
+
+#######################################
+#Astro markers > cluster #7 
+#######################################
+
+p <- DotPlot(object = OLglia1, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Rarres2", "Ccdc153", "Gja1","Vim", "Aqp4","Mlc1", "Mia", "Enkur", "Sox9", 
+    "Pltp", "Tm4sf1", "Sdc4", "Fgfr3", "Slc4a4", "Agt", "S1pr1", "Ezr", "Aldoc"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_OLglia1_astro_markers.pdf", width = 12, height = 6)
+
+
+###########################################################################################
+# Creating OLglia2 object from removing clusters 7 
+###########################################################################################
+
+OLglia2 <- subset(OLglia1, idents = c("7"), invert = TRUE)
+
+DimPlot(OLglia2, reduction = "umap", label= T, label.size = 7) + NoLegend()
+ggsave("OLglia2_clusters.pdf", width = 8.27, height = 6.00)  
+
+table(Idents(OLglia2))
+#  0   1   2   3   4   5   6 
+# 878 873 654 650 462 325 207  
+
+#IDENTIFICATION OF HIGHLY VARIABLE FEATURES
+OLglia2 <- FindVariableFeatures(OLglia2, selection.method = "vst", nfeatures = 2000)
+#SCALING THE DATA
+all.genes <- rownames(OLglia2)
+OLglia2 <- ScaleData(OLglia2, features = all.genes)
+#PERFORM LINEAR DIMENSIONAL REDUCTION (PCA)
+OLglia2 <- RunPCA(OLglia2, features = VariableFeatures(object = OLglia2))
+#CLUSTER THE CELLS
+OLglia2 <- FindNeighbors(OLglia2, dims = 1:15)
+OLglia2 <- FindClusters(OLglia2, resolution = 0.4) 
+OLglia2 <- RunUMAP(OLglia2, dims = 1:11)
+DimPlot(OLglia2, reduction = "umap", label= T, label.size = 7) + NoLegend()
+ggsave("OLglia2_clusters.pdf", width = 8.27, height = 6.00)  
+
+#######################################
+#Astro markers > cluster #7 
+#######################################
+
+p <- DotPlot(object = OLglia2, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Rarres2", "Ccdc153", "Gja1","Vim", "Aqp4","Mlc1", "Mia", "Enkur", "Sox9", 
+    "Pltp", "Tm4sf1", "Sdc4", "Fgfr3", "Slc4a4", "Agt", "S1pr1", "Ezr", "Aldoc"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_OLglia2_astro_markers.pdf", width = 12, height = 6)
+
+
+###########################################################################################
+# Creating OLglia2 object from removing clusters 7 
+###########################################################################################
+
+OLglia3 <- subset(OLglia2, idents = c("8"), invert = TRUE)
+
+DimPlot(OLglia3, reduction = "umap", label= T, label.size = 7) + NoLegend()
+ggsave("OLglia3_clusters.pdf", width = 8.27, height = 6.00)  
+
+table(Idents(OLglia3))
+#  0   1   2   3   4   5   6   7 
+# 941 906 506 484 400 327 292 195 
+
+
+#################################
+#MOL1 markers > clusters #1 & #2  
+#################################
+p <- DotPlot(object = OLglia3, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Apod", "Trf",  "Gpm6b", "Ugt8a",  "Fth1", "Gng11",
+    "Dbndd2",  "Hapln2", "Acot7", "Gstm5", "Elovl5", "Spock3", 
+    "Gjb1", "B3galt5", "Cpd", "Slco3a1", "Itgb4", "Anln", "Klk6", "Cd59a","Mgst3","Pmp22","Anxa5"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_OLglia3_MOL1_markers.pdf", width = 12, height = 6)
+
+
+
+###########################
+#MOL2 markers > cluster #5
+###########################  
+
+
+p <- DotPlot(object = OLglia3, cols = c("lightgrey", "blue"), dot.scale = 12, 
+  features = c("Car2", "Qdpr", "Gatm", "Tubb4a", "Stmn4", "Ndrg1", "Aplp1", "Neat1", "Il33","Dpy19l1", 
+    "Serpinb1a", "Ank2", "Pls1", "Zdhhc20", "Dnajb2", "Scd1", "Trim59", "Pex5l", "Tmem229a", 
+    "Rassf2", "Ppp1cc"))
+q <-  p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold"))
+ggsave("DotPlot_OLglia3_MOL2_markers.pdf", width = 12, height = 6)
+
+
+
+################################################################
+#to rename the clusters of OLglia2
+################################################################
+new.cluster.ids <- c("MFOL", "MOL1", "MOL4", "MOL3",  "MOL2","OPC", "iOL2",  "iOL1")
+names(new.cluster.ids) <- levels(OLglia3)
+#rename the identifiers (cluster names)
+OLglia3 <- RenameIdents(OLglia3, new.cluster.ids)
+levels(OLglia3)
+# "MFOL" "MOL1" "MOL3" "MOL2" "iOL2" "OPC"  "MOL4" "iOL1"
+DimPlot(OLglia3, reduction = "umap", label= T, label.size = 6, repel = T) 
+ggsave("OLglia3_clusters_renamed.pdf", width = 10, height = 6.00)  
+
+
+#################################################################
+#create the "celltype" column
+#################################################################
+names(new.cluster.ids) <- levels(OLglia3)
+OLglia3 <- RenameIdents(OLglia3, new.cluster.ids)
+OLglia3[["celltype"]] <- Idents(OLglia3) #this creates the "final_clusters" column
+head(OLglia3@meta.data)
+
+OLglia3@meta.data$celltype <- OLglia3@active.ident ##this changes the info the "final_clusters" column
+head(OLglia3@meta.data)
+#         orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.6 seurat_clusters SCT_snn_res.0.4
+# C1.1771017.030.C09 10X_Marques2016       4198         1402          0       6827         1480               6               5               5
+# C1.1771017.028.G05 10X_Marques2016       2913         1245          0       6492         1567               6               5               5
+# C1.1771052.132.B02 10X_Marques2016       3823         1831          0       6803         1945               6               5               5
+# C1.1772099.214.D12 10X_Marques2016       2653         1253          0       6377         1640               6               5               5
+# C1.1771017.029.D09 10X_Marques2016       2726         1221          0       6481         1563               6               5               5
+# C1.1771048.208.C05 10X_Marques2016       8863         2021          0       8124         2021               6               5               5
+#                    SCT_snn_res.0.5 celltype
+# C1.1771017.030.C09               4      OPC
+# C1.1771017.028.G05               4      OPC
+# C1.1771052.132.B02               4      OPC
+# C1.1772099.214.D12               4      OPC
+# C1.1771017.029.D09               4      OPC
+# C1.1771048.208.C05               4      OPC
+
+levels(OLglia3@meta.data$celltype)
+# "MFOL" "MOL1" "MOL3" "MOL2" "iOL2" "OPC"  "MOL4" "iOL1"
+# 
+# 
+#################################################################
+#Saving .rds objects
+#################################################################
+
+saveRDS(Marques2016, file = "Marques2016.rds") # all clusters with names and stages
+
+OLglia_Post <- OLglia3
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+levels(OLglia_Post) # "MFOL" "MOL1" "MOL4" "MOL3" "MOL2" "OPC"  "iOL2" "iOL1"
+new.cluster.ids <-  c( "MFOL", "MOL1", "MOL4", "MOL3", "MOL2", "OPCp" , "iOL2p", "iOL1p")  
+names(new.cluster.ids) <- levels(OLglia_Post)
+#rename the identifiers (cluster names)
+OLglia_Post <- RenameIdents(OLglia_Post, new.cluster.ids)
+levels(OLglia_Post)
+# "MFOL"  "MOL1"  "MOL4"  "MOL3"  "MOL2"  "OPCp"  "iOL2p" "iOL1p"
+
+table(Idents(OLglia_Post))
+#  MFOL  MOL1  MOL4  MOL3  MOL2  OPCp iOL2p iOL1p 
+#  941   906   506   484   400   327   292   195  
+
+#################################################################
+#create the "celltypes" column with Idents
+#################################################################
+OLglia_Post[["celltypes"]] <- Idents(OLglia_Post) #this creates the "celltypes" column
+head(OLglia_Post@meta.data)
+#                       orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.6 seurat_clusters SCT_snn_res.0.4
+# C1.1771017.030.C09 10X_Marques2016       4198         1402          0       6827         1480               6               5               5
+# C1.1771017.028.G05 10X_Marques2016       2913         1245          0       6492         1567               6               5               5
+# C1.1771052.132.B02 10X_Marques2016       3823         1831          0       6803         1945               6               5               5
+# C1.1772099.214.D12 10X_Marques2016       2653         1253          0       6377         1640               6               5               5
+# C1.1771017.029.D09 10X_Marques2016       2726         1221          0       6481         1563               6               5               5
+# C1.1771048.208.C05 10X_Marques2016       8863         2021          0       8124         2021               6               5               5
+#                    SCT_snn_res.0.5 celltype celltypes
+# C1.1771017.030.C09               4      OPC      OPCp
+# C1.1771017.028.G05               4      OPC      OPCp
+# C1.1771052.132.B02               4      OPC      OPCp
+# C1.1772099.214.D12               4      OPC      OPCp
+# C1.1771017.029.D09               4      OPC      OPCp
+# C1.1771048.208.C05               4      OPC      OPCp
+#################################################################
+#create the "origin" column
+#################################################################
+
+OLglia_Post[["origin"]] <- as.factor("PostBr")
+
+head(OLglia_Post@meta.data)
+#                        orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.6 seurat_clusters SCT_snn_res.0.4
+# C1.1771017.030.C09 10X_Marques2016       4198         1402          0       6827         1480               6               5               5
+# C1.1771017.028.G05 10X_Marques2016       2913         1245          0       6492         1567               6               5               5
+# C1.1771052.132.B02 10X_Marques2016       3823         1831          0       6803         1945               6               5               5
+# C1.1772099.214.D12 10X_Marques2016       2653         1253          0       6377         1640               6               5               5
+# C1.1771017.029.D09 10X_Marques2016       2726         1221          0       6481         1563               6               5               5
+# C1.1771048.208.C05 10X_Marques2016       8863         2021          0       8124         2021               6               5               5
+#                    SCT_snn_res.0.5 celltype celltypes origin
+# C1.1771017.030.C09               4      OPC      OPCp PostBr
+# C1.1771017.028.G05               4      OPC      OPCp PostBr
+# C1.1771052.132.B02               4      OPC      OPCp PostBr
+# C1.1772099.214.D12               4      OPC      OPCp PostBr
+# C1.1771017.029.D09               4      OPC      OPCp PostBr
+# C1.1771048.208.C05               4      OPC      OPCp PostBr
+
+#################################################################
+#create the "origin_celltype" column
+#################################################################
+
+
+prefix <- OLglia_Post@meta.data$origin
+
+suffix <- OLglia_Post@meta.data$celltype
+
+OLglia_Post[["celltype_origin"]] <- paste(prefix, suffix, sep = "_")
+
+head(OLglia_Post@meta.data)
+#                         orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.6 seurat_clusters SCT_snn_res.0.4
+# C1.1771017.030.C09 10X_Marques2016       4198         1402          0       6827         1480               6               5               5
+# C1.1771017.028.G05 10X_Marques2016       2913         1245          0       6492         1567               6               5               5
+# C1.1771052.132.B02 10X_Marques2016       3823         1831          0       6803         1945               6               5               5
+# C1.1772099.214.D12 10X_Marques2016       2653         1253          0       6377         1640               6               5               5
+# C1.1771017.029.D09 10X_Marques2016       2726         1221          0       6481         1563               6               5               5
+# C1.1771048.208.C05 10X_Marques2016       8863         2021          0       8124         2021               6               5               5
+#                    SCT_snn_res.0.5 celltype celltypes origin celltype_origin
+# C1.1771017.030.C09               4      OPC      OPCp PostBr      PostBr_OPC
+# C1.1771017.028.G05               4      OPC      OPCp PostBr      PostBr_OPC
+# C1.1771052.132.B02               4      OPC      OPCp PostBr      PostBr_OPC
+# C1.1772099.214.D12               4      OPC      OPCp PostBr      PostBr_OPC
+# C1.1771017.029.D09               4      OPC      OPCp PostBr      PostBr_OPC
+# C1.1771048.208.C05               4      OPC      OPCp PostBr      PostBr_OPC
+#################################################################
+#Saving .rds objects
+#################################################################
+
+saveRDS(Marques2016, file = "Marques2016.rds") # all clusters with names and stages
+saveRDS(OLglia_Post, file = "mOLglia_post_annot.rds")
