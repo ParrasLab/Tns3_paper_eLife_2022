@@ -1,0 +1,628 @@
+##################################################################################################################################
+#start of the new steps of processing Marques 2018 to have the groups "origin", "celltypes" and "celltype_origin"
+##################################################################################################################################
+setwd("C:/.../GSE95194_RAW")
+
+
+#install.packages("dplyr")
+#install.packages("Seurat")
+#install.packages("sctransform")
+#install.packages("ggplot2")
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(sctransform)
+
+#################################################################
+#import data
+#################################################################
+e13a.data <- read.table("GSM2498511_1771-055-004-GFP_sorted_E13-5_brain_expression_for_R.tab", 
+                  sep="", header = TRUE, row.names = 1, quote="")
+
+   dim(e13a.data) #24487    96
+            # check out the first six genes and cells
+            e13a.data[1:6, 1:6]
+            mean(e13a.data[,1])
+            var(e13a.data[,1])
+  
+            # summary of total expression per single cell
+            summary(colSums(e13a.data))
+            #Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+            #1166    5188    7628    8757   11097   40114 
+            summary(colSums(pbmc))
+            dim(pbmc)
+            pbmc[1:6, 1:6]
+            
+            # check how many genes are in each cell as frequency of cells with a given 
+            # value of sum of genes
+            hist(colSums(e13a.data),
+                 breaks = 100, main = "Expression sum per cell",
+                 xlab = "Sum expression")
+            
+            # check how many genes have at least one transcript in each cell
+            at_least_one <- apply(e13a.data, 2, function(x) sum(x>0))
+            hist(at_least_one, breaks = 100,
+                 main = "Distribution of detected genes",
+                 xlab = "Genes with at least one tag")
+            
+#importing each dataset 
+
+e13a.data <- read.table("GSM2498511_1771-055-004-GFP_sorted_E13-5_brain_expression_for_R.tab", 
+                          sep="", header = TRUE, row.names = 1, quote="") #24487    96 
+
+e13b.data <- read.table("GSM2498512_1771-055-005-GFP_sorted_E13-5_brain_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="") #24487    96
+            
+e13c.data <- read.table("GSM2498513_1771-055-006-GFP_sorted_E13-5_brain_expression_for_R.tab", 
+                         sep="", header = TRUE, row.names = 1, quote="") #24487    96
+ 
+e13d.data <- read.table("GSM2498516_1772-122-163-GFP_sorted_E13-5_brain_expression_for_R.tab", 
+                         sep="", header = TRUE, row.names = 1, quote="") #24487    96
+ 
+scE13a.data <- read.table("GSM2498514_1771-055-007-SpnCrd_GFPplus_E13-5_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="") #24487    96
+  
+scE13b.data <- read.table("GSM2498517_1772-122-164-SpnCrd_GFPplus_E13-5_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="") #24487    96
+
+scE13c.data <- read.table("GSM2498518_1772-122-165-SpnCrd_GFPplus_E13-5_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="") #24487    96
+
+scE13d.data <- read.table("GSM2498519_1772-122-239-SpnCrd_GFPplus_E13-5_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="") #24487    96
+ 
+scP7a.data <- read.table("GSM2498520_1772-122-241-Pdgfra_GFPplus_P7_spinalcrd_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="") 
+
+scP7b.data <- read.table("GSM2498521_1772-122-243-Pdgfra_GFPplus_P7_spinalcrd_expression_for_R.tab", 
+                          sep="", header = TRUE, row.names = 1, quote="")
+
+scP7c.data <- read.table("GSM2498522_1772-122-244-Pdgfra_GFPplus_P7_spinalcrd_expression_for_R.tab", 
+                          sep="", header = TRUE, row.names = 1, quote="")
+
+P7TamE13a.data <- read.table("GSM2498515_1771-055-045-P7_tamoxifen_at_E135_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+ 
+P7TamE13b.data <- read.table("GSM2498523_1772-146-142-P7_tamoxifen_at_E135_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+P7TamE13c.data <- read.table("GSM2498524_1772-158-147-P7_tamoxifen_at_E135_expression_for_R.tab", 
+                              sep="", header = TRUE, row.names = 1, quote="")
+ 
+P7lingE13a.data <- read.table("GSM2498525_1772-158-148-P7_Lineage_xxx_from_E135B_expression_for_R.tab", 
+                              sep="", header = TRUE, row.names = 1, quote="")
+
+P7lingE13b.data <- read.table("GSM2498526_1772-158-149-P7_Lineage_xxx_from_E135B_expression_for_R.tab", 
+                               sep="", header = TRUE, row.names = 1, quote="")
+ 
+P7lingE13c.data <- read.table("GSM2498527_1772-158-157-P7_Lineage_xxx_from_E135B_expression_for_R.tab", 
+                               sep="", header = TRUE, row.names = 1, quote="")
+ 
+P7CreP3a.data <- read.table("GSM2498528_1772-158-162-Lineage_tracing_from_P3-P7_Pdgfra-Cre_expression_for_R.tab", 
+                               sep="", header = TRUE, row.names = 1, quote="")
+ 
+P7CreP3b.data <- read.table("GSM2498529_1772-158-164-Lineage_tracing_from_P3-P7_Pdgfra-Cre_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+P7CreP3c.data <- read.table("GSM2498530_1772-158-165-Lineage_tracing_from_P3-P7_Pdgfra-Cre_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+P7GFPa.data <- read.table("GSM2498531_1771-048-203-P7_GFP_Cells_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+P7GFPb.data <- read.table("GSM2498532_1771-048-224-P7_GFP_Cells_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="")
+
+P7GFPsc1.data <- read.table("GSM2498533_1771-051-143-Spinal_Cord_expression_for_R.tab", 
+                           sep="", header = TRUE, row.names = 1, quote="")
+
+P7GFPsc2.data <- read.table("GSM2498536_1771-055-008-Pdgfra_GFPplus_P7_spinalcrd_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+OPCs_EMB1.data <- read.table("GSM2498534_1771-051-152-OPCs_EMB_expression_for_R.tab", 
+                             sep="", header = TRUE, row.names = 1, quote="")
+
+ OPCs_EMB2.data <- read.table("GSM2498535_1771-051-162-OPCs_EMB_expression_for_R.tab", 
+                              sep="", header = TRUE, row.names = 1, quote="")
+ 
+ #################################################################
+ #merging the datasets
+ #################################################################
+ e13.data <- cbind(e13a.data, e13b.data, e13c.data, e13d.data)
+ dim(e13.data) #24487   384
+e13.data[1:6, 1:6]
+#           Chip797.Sample138_A01 Chip797.Sample138_B01 Chip797.Sample138_C01 Chip797.Sample138_D01 Chip797.Sample138_E01 Chip797.Sample138_F01 
+#ERCC-00002                     0                     0                     0                    20                     0                     0
+#ERCC-00003                     0                     0                     0                     2                     0                     0
+#ERCC-00004                     0                     0                     0                     3                     0                     0
+#ERCC-00009                     0                     0                     0                     0                     0                     0
+#ERCC-00012                     0                     0                     0                     0                     0                     0
+#ERCC-00013                     0                     0                     0                     0                     0                     0
+prefix = "E13Br"
+colnames(e13.data) <-  paste(prefix, sep = "_", colnames(e13.data))
+e13.data[1:6, 1:6]
+
+ scE13.data  <- cbind(scE13a.data, scE13b.data, scE13c.data, scE13d.data)
+ dim(scE13.data) #24487   384
+ prefix = "E13sc"
+ colnames(scE13.data) <-  paste(prefix, sep = "_", colnames(scE13.data))
+ scE13.data[1:6, 1:6]
+ 
+ colnames (data) = c (paste0('prefix', )) 
+ scP7.data <- cbind(scP7a.data ,scP7b.data, scP7c.data)
+ dim(scP7.data)#24487   288
+ prefix = "P7sc"
+ colnames(scP7.data) <-  paste(prefix, sep = "_", colnames(scP7.data))
+ scP7.data[1:6, 1:6]
+ 
+ P7TamE13.data <- cbind(P7TamE13a.data, P7TamE13b.data, P7TamE13c.data)
+ dim(P7TamE13.data)# 24487   288
+ prefix = "P7br_TamE13"
+ colnames(P7TamE13.data) <-  paste(prefix, sep = "_", colnames(P7TamE13.data))
+ P7TamE13.data[1:6, 1:6]
+ 
+ P7lingE13.data <- cbind(P7lingE13a.data, P7lingE13b.data, P7lingE13c.data)
+ dim(P7lingE13.data)# 24487   288
+ prefix = "P7br_lingE13"
+ colnames(P7lingE13.data) <-  paste(prefix, sep = "_", colnames(P7lingE13.data))
+ P7lingE13.data[1:6, 1:6]
+ 
+ P7CreP3.data <- cbind(P7CreP3a.data, P7CreP3b.data, P7CreP3c.data)
+ dim(P7CreP3.data)# 24487   288
+ prefix = "P7br_CreP3"
+ colnames(P7CreP3.data) <-  paste(prefix, sep = "_", colnames(P7CreP3.data))
+ P7CreP3.data[1:6, 1:6]
+ 
+ P7GFP.data <- cbind(P7GFPa.data, P7GFPb.data) #24487   192
+ prefix = "P7br_GFP"
+ colnames(P7GFP.data) <-  paste(prefix, sep = "_", colnames(P7GFP.data))
+ P7GFP.data[1:6, 1:6]
+ 
+ P7GFPsc.data <- cbind(P7GFPsc1.data, P7GFPsc2.data) #24487   192
+ prefix = "P7sc_GFP"
+ colnames(P7GFPsc.data) <-  paste(prefix, sep = "_", colnames(P7GFPsc.data))
+ P7GFPsc.data[1:6, 1:6]
+ 
+ OPCs_EMB.data <-cbind(OPCs_EMB1.data, OPCs_EMB2.data) #24487   192
+ prefix = "OPCs_EMB"
+ colnames(OPCs_EMB.data) <-  paste(prefix, sep = "_", colnames(OPCs_EMB.data))
+ OPCs_EMB.data[1:6, 1:6]
+ 
+ devOLglia.data <- cbind(e13.data, scE13.data, scP7.data, P7TamE13.data, P7lingE13.data, 
+                     P7CreP3.data, P7GFP.data,P7GFPsc.data, OPCs_EMB.data)
+ dim(devOLglia.data) #24487  2496
+ devOLglia.data[1:6, 1:6]
+ 
+ write.table(x=devOLglia.data, file='devOLglia.data.txt',
+             row.names=F, col.names=T, quote=F, sep="\t", dec='.')
+ 
+ 
+ ##################################################################################################
+ # Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+            #>= 5 cells (~0.1% of the data). Keep all cells with at least 100 detected genes
+ ##################################################################################################
+
+ Marques2018 <- CreateSeuratObject(counts = devOLglia.data, project = "Marques_2018", 
+                           min.cells = 5, min.features = 100)
+ dim(Marques2018)#14346  1703
+ 
+
+    
+# store mitochondrial percentage in object meta data    
+ Marques2018 <- PercentageFeatureSet(Marques2018, pattern = "^MT-", col.name = "percent.mt")
+
+ #Apply sctransform normalization
+Marques2018 <- SCTransform(Marques2018, vars.to.regress = "percent.mt", verbose = FALSE)
+
+#Run PCA
+Marques2018 <- RunPCA(Marques2018, verbose = FALSE)
+
+#Visulize loadings 1 to 4
+VizDimLoadings(Marques2018, dims = 1:2, reduction = "pca")
+
+#Visulize components PC1-PC2
+DimPlot(Marques2018, dims = c(1, 2), reduction = "pca")
+ggsave("Marques2018_PCs.pdf", width = 8.27, height = 6.00)
+
+#DETERMINE THE DIMENSIONALITY OF THE DATASET
+
+ElbowPlot(Marques2018) #here, one can observe an 'elbow' around PC16-17, suggesting that the majority of true signal is captured in the first 10 PCs.
+ggsave("Marques2018_ElbowPlot_PCs.pdf", width = 8.27, height = 6.00)
+
+
+#Find Neighbours
+Marques2018 <- FindNeighbors(Marques2018, dims = 1:30, verbose = FALSE)
+
+# Find Clusters
+Marques2018 <- FindClusters(Marques2018, resolution = 0.4, verbose = FALSE)
+#it produces 12 clusters
+ 
+
+##########################################
+ #FIND NEW MARKERS FOR CLUSTERS
+ #########################################
+ Marques2018.markers <- FindAllMarkers(object = Marques2018, only.pos = TRUE, min.pct = 0.25, 
+                                       thresh.use = 0.25)
+ #Top 10 markers per cluster
+      markers10_Marques2018 <- Marques2018.markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+      head(markers10_Marques2018)
+      print(markers10_Marques2018)[c(30:40),]
+      
+ #heatmap of the 10 markers of each cluster by expression levels      
+      library(viridis)
+      DoHeatmap(Marques2018, features = markers10_Marques2018$gene, slot = "scale.data", size = 3.5, draw.lines = TRUE) +
+        scale_fill_viridis(option = "D")
+      ggsave("heatmap_Marques2018_clusters.pdf", width = 14, height = 20)
+
+
+ dim(Marques2018.markers)
+ #3016    7
+
+#Dotplot of the 10 markers of each cluster by expression levels   
+ 
+ markers10 <- Marques2018.markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+ head(markers10)
+ dim(markers10)#60 72
+ markers_10top <- as.vector(markers10$gene)
+ markers_10top <- as.vector(markers_10top)
+
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features = rev(unique(markers_5top)))
+ q <- p + theme_grey() 
+   q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+                   axis.text.y = element_text(size=12,face = "bold")) +
+           scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                               discrete = FALSE, option = "D") + 
+           labs(x=NULL, y="Cluster")
+   ggsave("DotPlot_Marques2018_markers10top.pdf", width = 24, height = 6) 
+         
+
+#####################################################################################
+#Cluster tree of mOL 
+######################################################################################
+  
+  Marques2018 <- BuildClusterTree(object = Marques2018, verbose = FALSE)
+  PlotClusterTree(Marques2018)
+  
+
+
+################################################# 
+#Run UMAP       
+#################################################       
+
+ Marques2018 <- RunUMAP(Marques2018, dims = 1:30, verbose = FALSE)
+
+DimPlot(Marques2018, reduction = "umap", label = TRUE, label.size = 7, pt.size = 0.5) + NoLegend()
+ggsave("Marques2018_UMAP.pdf", width = 8.27, height = 6.00)
+
+
+genes <- as.vector(c("Sox11","Sox4", "Dcx","Mki67","Top2a", "Pcna",  "Ascl1","Cspg4","Pdgfra", "Olig2",  "Olig1","Sox10", "Gpr17", "Nkx2-2", "Itpr2", "Enpp6",
+                     "Tns3", "Cnp", "Opalin", "Mag", "Mbp", "Plp1", "Mog"))
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y=NULL)
+ggsave("DotPlot_Tensin3_Marques2018.pdf", width = 12, height = 4.5)
+
+#all cluster markers   
+genes <- as.vector(c( "Vim","Hes1", "Id1", "Sox11","Sox4", "Dcx","Mki67","Top2a", "Pcna",  "Ascl1","Cspg4","Pdgfra", "Grin3a", "Olig2",  "Olig1","Sox10", "Gpr17", "Nkx2-2", "Itpr2", "Enpp6",
+                      "Tns3", "Slc9a3r2","Igsf8", "Cnp", "Mag", "Mbp", "Plp1", "Mog", "Mgst3", "Pmp22", "Neat1", "Grm3", "Il33"))
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y=NULL)
+ggsave("DotPlot_allmarkers_Marques2018.pdf", width = 15, height = 4.5)
+
+table(Idents(Marques2018))
+#   0   1   2   3   4   5   6   7   8   9 
+# 327 272 236 234 203 133 107  80  62  49 
+
+# OPC   NSC  NPC   iOL2   cycOPC  NPC  MG  iOL1    OPC  VLCM 
+# 327   272  236   234    203    133  107   80     62    49 
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+levels(Marques2018) # 0   1   2   3   4   5   6   7   8   9
+new.cluster.ids <-  c("OPC1", "NSC", "NPC1", "iOL2",   "cycOPC",  "NPC2",  "MG",  "iOL1",    "OPC2",  "VLCM")  
+names(new.cluster.ids) <- levels(Marques2018)
+#rename the identifiers (cluster names)
+Marques2018 <- RenameIdents(Marques2018, new.cluster.ids)
+levels(Marques2018)
+#"OPC1"   "NSC"    "NPC1"   "iOL2"   "cycOPC" "NPC2"   "MG"     "iOL1"   "OPC2"   "VLCM"  
+table(Idents(Marques2018))
+#OPC    NSC    NPC   iOL2 cycOPC     MG   iOL1   VLCM 
+#389    272    369    234    203    107     80     49 
+table(Idents(Marques2018))
+#OPC1    NSC   NPC1   iOL2 cycOPC   NPC2    MG   iOL1   OPC2   VLCM 
+#327    272    236    234    203    133    107    80     62     49 
+
+#all cluster markers   
+genes <- as.vector(c( "Vim","Hes1", "Id1", "Sox11","Sox4", "Dcx","Mki67","Top2a", "Pcna",  "Ascl1","Cspg4","Pdgfra", "Grin3a", "Olig2",  "Olig1","Sox10", "Gpr17", "Nkx2-2", "Itpr2", "Enpp6",
+                      "Tns3", "Slc9a3r2","Igsf8", "Cnp", "Mag", "Mbp", "Plp1", "Mog", "Mgst3", "Pmp22", "Neat1", "Grm3", "Il33"))
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y=NULL)
+ggsave("DotPlot_allmarkers_Marques2018_new_names.pdf", width = 15, height = 4.5)
+
+#################################################################  
+#reordering the clusters
+#################################################################
+Marques2018@active.ident <- factor(Marques2018@active.ident, levels= c("NSC", "NPC", "cycOPC", "OPC", "iOL1", "iOL2", "MG", "VLCM"))
+levels(Marques2018) #  "NSC"    "NPC"    "cycOPC" "OPC"    "iOL1"   "iOL2"   "MG"     "VLCM"  
+#all cluster markers   
+genes <- as.vector(c( "Vim","Hes1", "Id1", "Sox11","Sox4", "Dcx","Mki67","Top2a", "Pcna",  "Ascl1","Cspg4","Pdgfra", "Grin3a", "Olig2",  "Olig1","Sox10", "Gpr17", "Nkx2-2", "Itpr2", "Enpp6",
+                      "Tns3", "Slc9a3r2","Igsf8", "Cnp", "Mag", "Mbp", "Plp1", "Mog", "Mgst3", "Pmp22", "Neat1", "Grm3", "Il33"))
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y=NULL)
+ggsave("DotPlot_allmarkers_Marques2018_new_names.pdf", width = 15, height = 4.5)
+
+DimPlot(Marques2018, reduction = "umap", label = TRUE, label.size = 7, pt.size = 0.5) + NoLegend()
+ggsave("Marques2018_UMAP_cluster_names.pdf", width = 8.27, height = 6.00)
+
+
+#################################################################
+#create the "celltypes" column
+#################################################################
+names(new.cluster.ids) <- levels(Marques2018)
+Marques2018 <- RenameIdents(Marques2018, new.cluster.ids)
+Marques2018[["celltype"]] <- Idents(Marques2018) #this creates the "celltype" column adding the Idents (new names for celltypes) as values
+head(Marques2018@meta.data)
+#                            orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.4 seurat_clusters celltype
+#E13Br_Chip797.Sample138_D01      E13Br       2839         1316          0       3073         1316               2               2     NPC1
+#E13Br_Chip797.Sample138_G01      E13Br       1203          653          0       2672          746               5               5     NPC2
+#E13Br_Chip797.Sample138_D02      E13Br       6539         2523          0       4054         2384               2               2     NPC1
+#E13Br_Chip797.Sample138_G02      E13Br       4629         2187          0       3931         2187               2               2     NPC1
+#E13Br_Chip797.Sample138_H02      E13Br       1918         1054          0       2974         1065               5               5     NPC2
+#E13Br_Chip797.Sample138_F03      E13Br       3030         1428          0       3150         1428               1               1      NSC
+
+
+###########################################################################################
+#create the "celltype_origin" column by extracting the prefix of the rownames 
+###########################################################################################
+
+library(dplyr) 
+library(stringr)
+
+string  <- rownames(Marques2018@meta.data)
+head(string)
+#"E13Br_Chip797.Sample138_D01" "E13Br_Chip797.Sample138_G01" "E13Br_Chip797.Sample138_D02" "E13Br_Chip797.Sample138_G02" "E13Br_Chip797.Sample138_H02" "E13Br_Chip797.Sample138_F03"
+
+prefix <- gsub("_.*$","",string) #to subtitute "_" followed by "whatever" (*$), (also works with * alone), by nothing ""
+head(prefix)
+# "E13Br" "E13Br" "E13Br" "E13Br" "E13Br" "E13Br"
+
+suffix = Marques2018@meta.data$celltype
+
+Marques2018[["celltype_origin"]] <- Idents(Marques2018)
+
+Marques2018@meta.data$celltype_origin <- paste(prefix, suffix, sep = "_")
+head(Marques2018@meta.data)
+#                            orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.4 seurat_clusters celltype celltype_origin
+#E13Br_Chip797.Sample138_D01      E13Br       2839         1316          0       3073         1316               2               2     NPC1    E13Br_NPC1
+#E13Br_Chip797.Sample138_G01      E13Br       1203          653          0       2672          746               5               5     NPC2    E13Br_NPC2
+#E13Br_Chip797.Sample138_D02      E13Br       6539         2523          0       4054         2384               2               2     NPC1    E13Br_NPC1
+#E13Br_Chip797.Sample138_G02      E13Br       4629         2187          0       3931         2187               2               2     NPC1    E13Br_NPC1
+#E13Br_Chip797.Sample138_H02      E13Br       1918         1054          0       2974         1065               5               5     NPC2    E13Br_NPC2
+#E13Br_Chip797.Sample138_F03      E13Br       3030         1428          0       3150         1428               1               1      NSC     E13Br_NSC
+
+#################################################################
+#create the "origin" column
+#################################################################     
+Marques2018[["origin"]]  <- Marques2018@meta.data$orig.ident
+head(Marques2018@meta.data)
+                            #orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.4 seurat_clusters celltype origin celltype_origin
+#E13Br_Chip797.Sample138_D01      E13Br       2839         1316          0       3073         1316               2               2     NPC1  E13Br      E13Br_NPC1
+#E13Br_Chip797.Sample138_G01      E13Br       1203          653          0       2672          746               5               5     NPC2  E13Br      E13Br_NPC2
+#E13Br_Chip797.Sample138_D02      E13Br       6539         2523          0       4054         2384               2               2     NPC1  E13Br      E13Br_NPC1
+#E13Br_Chip797.Sample138_G02      E13Br       4629         2187          0       3931         2187               2               2     NPC1  E13Br      E13Br_NPC1
+#E13Br_Chip797.Sample138_H02      E13Br       1918         1054          0       2974         1065               5               5     NPC2  E13Br      E13Br_NPC2
+#E13Br_Chip797.Sample138_F03      E13Br       3030         1428          0       3150         1428               1               1      NSC  E13Br       E13Br_NSC
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+levels(Marques2018) # "OPC1"   "NSC"    "NPC1"   "iOL2"   "cycOPC" "NPC2"   "MG"     "iOL1"   "OPC2"   "VLCM"  
+new.cluster.ids <-  c("OPC1", "NSC", "NPC1", "iOL2d",   "cycOPC",  "NPC2",  "MG",  "iOL1d",    "OPC2",  "VLCM")  
+names(new.cluster.ids) <- levels(Marques2018)
+#rename the identifiers (cluster names)
+Marques2018 <- RenameIdents(Marques2018, new.cluster.ids)
+levels(Marques2018)
+#"OPC1"   "NSC"    "NPC1"   "iOL2d"  "cycOPC" "NPC2"   "MG"     "iOL1d"  "OPC2"   "VLCM" 
+
+table(Idents(Marques2018))
+#OPC1    NSC   NPC1   iOL2d  cycOPC   NPC2     MG   iOL1d   OPC2   VLCM 
+#327    272    236     234    203      133    107     80     62     49 
+table(Marques2018@meta.data$origin)
+#E13Br E13sc  OPCs  P7br  P7sc 
+# 248   306    68   761   320 
+v <- as.vector(Marques2018@meta.data$origin)
+length(v) #1703
+v <- as.vector(na.omit(Marques2018@meta.data$origin)) 
+length(v) #1703
+levels(Marques2018@meta.data$origin)
+#"E13Br" "E13sc" "OPCs"  "P7br"  "P7sc" 
+
+
+#################################################################
+#create the "celltypes" column
+#################################################################
+names(new.cluster.ids) <- levels(Marques2018)
+Marques2018 <- RenameIdents(Marques2018, new.cluster.ids)
+Marques2018[["celltypes"]] <- Idents(Marques2018) #this creates the "celltype" column
+head(Marques2018@meta.data)
+levels(Marques2018$celltypes) # with the new names of celltypes that distinguish them from the postnatal names
+#"OPC1"   "NSC"    "NPC1"   "iOL2d"  "cycOPC" "NPC2"   "MG"     "iOL1d"  "OPC2"   "VLCM"  
+levels(Marques2018$celltype) 
+#  "OPC1"   "NSC"    "NPC1"   "iOL2"   "cycOPC" "NPC2"   "MG"     "iOL1"   "OPC2"   "VLCM"  
+
+#                            orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.4 seurat_clusters celltype origin celltype_origin celltypes
+#E13Br_Chip797.Sample138_D01      E13Br       2839         1316          0       3073         1316               2               2     NPC1  E13Br      E13Br_NPC1      NPC1
+#E13Br_Chip797.Sample138_G01      E13Br       1203          653          0       2672          746               5               5     NPC2  E13Br      E13Br_NPC2      NPC2
+#E13Br_Chip797.Sample138_D02      E13Br       6539         2523          0       4054         2384               2               2     NPC1  E13Br      E13Br_NPC1      NPC1
+#E13Br_Chip797.Sample138_G02      E13Br       4629         2187          0       3931         2187               2               2     NPC1  E13Br      E13Br_NPC1      NPC1
+#E13Br_Chip797.Sample138_H02      E13Br       1918         1054          0       2974         1065               5               5     NPC2  E13Br      E13Br_NPC2      NPC2
+#E13Br_Chip797.Sample138_F03      E13Br       3030         1428          0       3150         1428               1               1      NSC  E13Br       E13Br_NSC       NSC
+
+
+table(Marques2018@meta.data$seurat_clusters)
+# 0   1   2   3   4   5   6   7   8   9 
+#327 272 236 234 203 133 107  80  62  49 
+
+levels(Marques2018$orig.ident)
+#"E13Br" "E13sc" "OPCs"  "P7br"  "P7sc" 
+
+
+Marques2018$origin <- as.factor(Marques2018$origin)
+levels(Marques2018$origin) 
+
+#"E13Br_cycOPC" "E13Br_iOL1"   "E13Br_NPC1"   "E13Br_NPC2"   "E13Br_NSC"    "E13Br_VLCM"   "E13sc_cycOPC" "E13sc_iOL1"   "E13sc_NPC1"   "E13sc_NPC2"   "E13sc_NSC"    "E13sc_VLCM"   "OPCs_cycOPC" 
+#[14] "OPCs_NPC1"    "OPCs_NPC2"    "OPCs_NSC"     "OPCs_VLCM"    "P7br_cycOPC"  "P7br_iOL1"    "P7br_iOL2"    "P7br_MG"      "P7br_NPC1"    "P7br_NSC"     "P7br_OPC1"    "P7br_OPC2"    "P7sc_cycOPC" 
+#[27] "P7sc_iOL1"    "P7sc_iOL2"    "P7sc_MG"      "P7sc_NPC1"    "P7sc_NSC"     "P7sc_OPC1"    "P7sc_VLCM"   
+
+# "E13Br_cycOPC" "E13Br_iOL1"   "E13Br_NPC"    "E13Br_NSC"    "E13Br_OPC"    "E13sc_cycOPC" "E13sc_iOL1"   "E13sc_NPC"    "E13sc_NSC"    "E13sc_OPC"    "OPCs_iOL1"    "OPCs_NPC"     "OPCs_NSC"    
+# "OPCs_OPC"     "P7br_cycOPC"  "P7br_iOL2"    "P7br_MG"      "P7br_NPC"     "P7br_NSC"     "P7br_OPC"     "P7sc_cycOPC"  "P7sc_iOL1"    "P7sc_iOL2"    "P7sc_MG"      "P7sc_NPC"     "P7sc_NSC"    
+# "P7sc_OPC"   
+
+
+levels(Marques2018)
+#"OPC1"   "NSC"    "NPC1"   "iOL2d"  "cycOPC" "NPC2"   "MG"     "iOL1d"  "OPC2"   "VLCM"  
+levels(Marques2018$orig.ident) 
+#"E13Br" "E13sc" "OPCs"  "P7br"  "P7sc" 
+
+
+##########################################
+#Top 50 markers per cluster
+#########################################
+
+markers50_devOLglia <- devOLglia.markers %>% group_by(cluster) %>% top_n(50, avg_logFC)
+head(markers50_devOLglia)
+dim(markers50_devOLglia) #600   7
+write.table(markers50_devOLglia, file='markers50_devOLglia.txt', sep="\t", quote=F, col.names=T, row.names=F)
+
+##################################################################
+#Markers of different stages and cell types per cluster
+#################################################################
+
+OPCmarkers <- c( "Pdgfra", "Cspg5",  "Cspg4",  "Ascl1","Emid1","Tmem255b","Ncan", "Rlbp1",  "Kcnip3", "Rgcc", "Sdc3","Ednrb", "Pcdh15", "Sox11", "Tmem100", 
+                  "Spon1", "Gria3", "Traf4", "Matn4", "3110035E14Rik" )
+p <- DotPlot(object = devOLglia,  dot.scale = 12, features =  rev(OPCmarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_OPC_markers_devOLglia.pdf", width = 12, height = 6)
+
+COPmarkers <-c("Tmem108", "Ptpre","Bmp4", "Pdcd4", "AI414108", "Tubb2b", "Ppfibp1", "Neu4","Trio", "Tnr",  "Arsb","Ust", "Lrrc42", "Epb4.1l2", "Sgk1", "Cyfip2","Gpr17", "Fyn")
+
+p <- DotPlot(object = devOLglia,  dot.scale = 12, features =  rev(COPmarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_devOLglia_COP_markers.pdf", width = 10, height = 6)
+
+
+iOLmarkers <- c("Rras2", "9630013A20Rik", "Rims2", "Fam107b",  "Prom1",
+  "Fkbp9",  "Rap2a", "Ubl3", "Sema6a", "Tmem163", "Rell1",
+  "Arpc1b",  "Add1", "Eml1", "Pdia6", "Kndc1", "Hmgcr", "Reep5", "Mt1")
+
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features =  rev(iOLmarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_Marques2018_iOL_markers.pdf", width = 11, height = 6)
+
+
+astromarkers <- c("Rarres2", "Ccdc153", "Gja1","Vim", "Aqp4","Mlc1", "Mia", "Enkur", "Sox9", 
+                  "Pltp", "Tm4sf1", "Sdc4", "Fgfr3", "Slc4a4", "Agt", "S1pr1", "Ezr", "Aldoc")
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features =  rev(astromarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_Marques2018_astro_markers.pdf", width = 11, height = 6)
+
+microglialmarkers <- c("C1qa", "Csf1r", "Cx3cr1", "Lyz2", "Pf4", "C1qb", "Cd14", "Tyrobp", 
+                      "Fcgr3",  "Laptm5", "Aif1",  "Ctss", "Ly86", "F13a1", "Ccl12", "C1qc", 
+                      "Ccl7", "Hpgds", "Mrc1", "Rnase4", "Ccl3", "Rgs1", "Gpr34", "Ctsc", "Apoe")
+
+p <- DotPlot(object = Marques2018,  dot.scale = 12, features =  microglialmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_Marques2018_microglial_markers.pdf", width = 8, height = 6)
+
+mOLmarkers= c("Apod", "Trf",  "Gpm6b", "Ugt8a",  "Fth1", "Gng11",   "Dbndd2",  "Hapln2", "Acot7", "Gstm5", "Elovl5", 
+    "Spock3",  "Gjb1", "B3galt5", "Cpd", "Slco3a1", "Itgb4", "Anln", "Klk6", "Cd59a","Mgst3","Pmp22","Anxa5")
+
+p <- DotPlot(object = devOLglia,  dot.scale = 12, features =  rev(mOLmarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_devOLglia_mOL_markers.pdf", width = 12, height = 6)
+
+
+
+#############################################################################
+# Subseting Neural cells: mOLglia_dev object
+#############################################################################
+mOLglia_dev <- subset(Marques2018, idents = c("MG" , "VLCM"), invert = T)
+mOLglia_dev <- RunUMAP(mOLglia_dev, dims = 1:15)
+dim(mOLglia_dev) #14346  1547
+table(Idents(mOLglia_dev))
+#OPC1    NSC   NPC1  iOL2d cycOPC   NPC2  iOL1d   OPC2 
+#327    272    236    234    203    133     80     62
+
+DimPlot(mOLglia_dev, reduction = "umap", label = TRUE, label.size = 7, pt.size = 0.5) + NoLegend()
+ggsave("mOLglia_dev_clusters.pdf", width = 8.27, height = 6.00)
+
+head(mOLglia_dev@meta.data)
+#                             orig.ident nCount_RNA nFeature_RNA percent.mt nCount_SCT nFeature_SCT SCT_snn_res.0.4
+# E13Br_Chip797.Sample138_D01      E13Br       2839         1316          0       3073         1316               2
+# E13Br_Chip797.Sample138_G01      E13Br       1203          653          0       2672          746               5
+# E13Br_Chip797.Sample138_D02      E13Br       6539         2523          0       4054         2384               2
+# E13Br_Chip797.Sample138_G02      E13Br       4629         2187          0       3931         2187               2
+# E13Br_Chip797.Sample138_H02      E13Br       1918         1054          0       2974         1065               5
+# E13Br_Chip797.Sample138_F03      E13Br       3030         1428          0       3150         1428               1
+#                             seurat_clusters celltype origin celltype_origin celltypes
+# E13Br_Chip797.Sample138_D01               2     NPC1  E13Br      E13Br_NPC1      NPC1
+# E13Br_Chip797.Sample138_G01               5     NPC2  E13Br      E13Br_NPC2      NPC2
+# E13Br_Chip797.Sample138_D02               2     NPC1  E13Br      E13Br_NPC1      NPC1
+# E13Br_Chip797.Sample138_G02               2     NPC1  E13Br      E13Br_NPC1      NPC1
+# E13Br_Chip797.Sample138_H02               5     NPC2  E13Br      E13Br_NPC2      NPC2
+# E13Br_Chip797.Sample138_F03               1      NSC  E13Br       E13Br_NSC       NSC
+
+#################################################################
+#Saving .rds objects
+#################################################################
+
+saveRDS(Marques2018, file = "Marques2018.rds") # all clusters with names and stages
+saveRDS(mOLglia_dev, file = "mOLglia_dev.rds")
+
+ 
