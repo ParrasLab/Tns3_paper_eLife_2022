@@ -1,0 +1,1058 @@
+#summary note######################################################################################################
+##this script contains the import of Chamling datasets corresponding to hPDGFRa_Tom+ cells ESCs_derived from 
+#datasets of days d77, d89, d104 
+#and a larger better one called d85
+####################################################################################################################
+
+setwd("C:/.../hOPCs_PSCderived_Chamling_NCom_2021")
+#install.packages("dplyr")
+#install.packages("Seurat")
+#("sctransform")
+#install.packages("ggplot2")
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(sctransform)
+require(org.Hs.eg.db) 
+library(data.table)
+library(clusterProfiler)
+
+
+############################################################################################################
+
+#import data d85
+d85 <- read.csv("GSM4983787_d85_opc_processed.csv", header = T, row.names = 1 )
+
+class(d85) #"data.frame"
+dim(d85) #32738  4420
+
+# check out the first six genes and cells
+d85 [1:6, 1:6]
+#                X AAACCTGCATTACGAC.1 AAACCTGGTACCAGTT.1 AAACCTGGTACGCACC.1 AAACCTGTCGAACGGA.1 AAACCTGTCGTAGGAG.1
+#1 ENSG00000243485                  0                  0                  0                  0                  0
+#2 ENSG00000237613                  0                  0                  0                  0                  0
+#3 ENSG00000186092                  0                  0                  0                  0                  0
+#4 ENSG00000238009                  0                  0                  0                  0                  0
+#5 ENSG00000239945                  0                  0                  0                  0                  0
+#6 ENSG00000237683                  0                  0                  0                  0                  0
+
+# summary of total expression per single cell
+summary(colSums(d85))
+## Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#  3376    4630    6681    8899   10580   45329 
+
+# check how many genes are in each cell as frequency of cells with a given value of sum of genes
+pdf("histogram_sum_expression_per_cell.pdf", width = 8, height = 6)   
+hist(colSums(d85),
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+dev.off()
+
+# check how many genes have at least one transcript in each cell
+at_least_one <- apply(d85 , 2, function(x) sum(x>0))
+pdf("histogram_detected_genes_per_cell.pdf", width = 8, height = 6) 
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+dev.off()
+
+
+#####################################################################       
+#Transforming ENSEMBL IDs with .XX into SYMBOL IDs
+#####################################################################   
+ID <- as.character(rownames(d85))
+length(ID) #  32738
+d85 <- data.frame(ID,d85)
+dim(d85) #32738  4420
+d85[1:6, 1:6]
+#                             ID AAACCTGCATTACGAC.1 AAACCTGGTACCAGTT.1 AAACCTGGTACGCACC.1 AAACCTGTCGAACGGA.1 AAACCTGTCGTAGGAG.1
+#ENSG00000243485 ENSG00000243485                  0                  0                  0                  0                  0
+#ENSG00000237613 ENSG00000237613                  0                  0                  0                  0                  0
+#ENSG00000186092 ENSG00000186092                  0                  0                  0                  0                  0
+#ENSG00000238009 ENSG00000238009                  0                  0                  0                  0                  0
+#ENSG00000239945 ENSG00000239945                  0                  0                  0                  0                  0
+#ENSG00000237683 ENSG00000237683                  0                  0                  0                  0                  0
+
+eg = bitr(ID, fromType <- "ENSEMBL", toType <- "SYMBOL", OrgDb <- "org.Hs.eg.db") #Biological Id TRanslator
+#Warning message:  32.24% of input gene IDs are fail to map...
+head(eg)
+dim(eg) #22393     2
+colnames(eg) <- c("ID", "SYMBOL")
+head(eg)
+
+dat3 = left_join(d85, eg,   by = c( "ID" = "ID"))
+dim(dat3) #32947  4421
+dat3[1:6, 1:6]
+#ID AAACCTGCATTACGAC.1 AAACCTGGTACCAGTT.1 AAACCTGGTACGCACC.1 AAACCTGTCGAACGGA.1 AAACCTGTCGTAGGAG.1
+#1 ENSG00000243485                  0                  0                  0                  0                  0
+#2 ENSG00000237613                  0                  0                  0                  0                  0
+#3 ENSG00000186092                  0                  0                  0                  0                  0
+#4 ENSG00000238009                  0                  0                  0                  0                  0
+#5 ENSG00000239945                  0                  0                  0                  0                  0
+#6 ENSG00000237683                  0                  0                  0                  0                  0
+dat3 <- na.omit(dat3)
+dim(dat3) #22393  4421
+dat3[1:6, 4415:4421]
+#   TTTGTCACAGTCAGCC.1 TTTGTCACATGAACCT.1 TTTGTCAGTCAACTGT.1 TTTGTCATCACTCCTG.1 TTTGTCATCAGCGACC.1 TTTGTCATCATGTAGC.1       SYMBOL
+#2                   0                  0                  0                  0                  0                  0      FAM138A
+#3                   0                  0                  0                  0                  0                  0        OR4F5
+#4                   0                  0                  0                  0                  0                  0 LOC100996442
+#17                  0                  0                  0                  0                  0                  0 LOC101928626
+#24                  0                  0                  0                  0                  0                  0    LINC01409
+#26                  0                  0                  0                  0                  0                  0       FAM87B
+ 
+dat3.nona = na.omit(dat3) #on vire le NA
+dim(dat3.nona) #22393  4421
+dat3.nona$mean = rowMeans(dat3.nona[, 2:4420]) #on calcule la moyenne par ligne
+dat4 = setDT(dat3.nona)[order(-mean), head(.SD, 1) , SYMBOL] 
+dat4[1:6, 1:6]
+#   SYMBOL              ID AAACCTGCATTACGAC.1 AAACCTGGTACCAGTT.1 AAACCTGGTACGCACC.1 AAACCTGTCGAACGGA.1
+#1: MALAT1 ENSG00000251562                202                188                385                375
+#2:   COX2 ENSG00000198712                 31                 34                112                404
+#3:   COX1 ENSG00000198804                 28                 36                108                284
+#4:    ND4 ENSG00000198886                 28                 39                 78                129
+#5:   COX3 ENSG00000198938                 18                 28                100                139
+#6:   CYTB ENSG00000198727                 22                 29                 74                 81
+dat4[1:6, 4415:4421]
+#   TTTGTCACAGCTTCGG.1 TTTGTCACAGTCAGCC.1 TTTGTCACATGAACCT.1 TTTGTCAGTCAACTGT.1 TTTGTCATCACTCCTG.1 TTTGTCATCAGCGACC.1 TTTGTCATCATGTAGC.1
+#1:                539                356                455                287                694                856                 93
+#2:                109                 25                 52                 76                  0                334                108
+#3:                136                 22                 47                 71                  1                244                 98
+#4:                 58                 21                 27                 32                  2                162                 33
+#5:                 79                 10                 33                 64                  3                131                 53
+#6:                 75                 12                 30                 35                  1                134                 43
+dat5 <- data.frame(row.names =dat4$SYMBOL, dat4[ , c(3:4421)] )
+dim(dat5) #22301  4419
+dat5[1:6, 1:6]
+#       AAACCTGCATTACGAC.1 AAACCTGGTACCAGTT.1 AAACCTGGTACGCACC.1 AAACCTGTCGAACGGA.1 AAACCTGTCGTAGGAG.1 AAACGGGAGATAGCAT.1
+#MALAT1                202                188                385                375                172                103
+#COX2                   31                 34                112                404                135                124
+#COX1                   28                 36                108                284                129                144
+#ND4                    28                 39                 78                129                 82                 85
+#COX3                   18                 28                100                139                 54                 85
+#CYTB                   22                 29                 74                 81                 71                 81
+
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+#>= 10 cells (~0.1% of the data). Keep all cells with at least 200 detected genes
+d85 <- CreateSeuratObject(counts = dat5, project = "10X_hES_d85", 
+                           min.cells = 10, min.features = 200)
+dim(d85) #14537  4419
+head(d85@meta.data)
+##                      orig.ident nCount_RNA nFeature_RNA
+#AAACCTGCATTACGAC.1    10X_hES_d85       3499         1596
+#AAACCTGGTACCAGTT.1    10X_hES_d85       3688         1563
+#AAACCTGGTACGCACC.1    10X_hES_d85      10766         3436
+#AAACCTGTCGAACGGA.1    10X_hES_d85      14782         4076
+#AAACCTGTCGTAGGAG.1    10X_hES_d85       8562         2993
+#AAACGGGAGATAGCAT.1    10X_hES_d85       7060         2792
+
+################################################################################################################
+
+#import data d104
+d104 <- read.csv("GSM4379134_d104_exp.csv", header = T, row.names = 1 )
+
+class(d104) #"data.frame"
+dim(d104) #19818   777
+
+# check out the first six genes and cells
+d104 [11000:11006, 1:6]
+#         d104_GCATTAGATTCT d104_ATGTCGATCGGT d104_TCAGAAATTGGT d104_CTTCCGTGTTTT d104_GAAAGGATATTA d104_CACCGCAAACGA
+#A1BG                     0                 0                 0                 0                 0                 0
+#A1BG-AS1                 0                 0                 0                 0                 0                 0
+#A2M-AS1                  0                 0                 0                 0                 0                 0
+#A2MP1                    0                 0                 0                 0                 0                 0
+#A4GALT                   0                 0                 0                 0                 0                 0
+#AAAS                     1                 0                 1                 0                 2                 0
+
+# summary of total expression per single cell
+summary(colSums(d104))
+##  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   352    1008    1797    2682    3229   27087 
+
+# check how many genes are in each cell as frequency of cells with a given value of sum of genes
+pdf("d104_histogram_sum_expression_per_cell.pdf", width = 8, height = 6)   
+hist(colSums(d104),
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+dev.off()
+
+# check how many genes have at least one transcript in each cell
+at_least_one <- apply(d104 , 2, function(x) sum(x>0))
+pdf("d104_histogram_detected_genes_per_cell.pdf", width = 8, height = 6) 
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+dev.off()
+
+
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+#>= 10 cells (~0.1% of the data). Keep all cells with at least 200 detected genes
+d104 <- CreateSeuratObject(counts = d104, project = "10X_hES_d104", 
+                          min.cells = 10, min.features = 200)
+dim(d104) #11807   777
+head(d104@meta.data)
+#                  orig.ident nCount_RNA nFeature_RNA
+#d104_GCATTAGATTCT       d104      26730         6560
+#d104_ATGTCGATCGGT       d104      14525         4564
+#d104_TCAGAAATTGGT       d104      17126         4940
+#d104_CTTCCGTGTTTT       d104      15861         4883
+#d104_GAAAGGATATTA       d104      13871         4711
+#d104_CACCGCAAACGA       d104      19201         5465
+
+################################################################################################################
+
+#import data d89
+d89 <- read.csv("GSM4379133_d89_exp.csv", header = T, row.names = 1 )
+
+class(d89) #"data.frame"
+dim(d89) #19818  1803
+
+# check out the first six genes and cells
+d89 [11000:11006, 1:6]
+#        d89_GGTTGGCAGGCA d89_GCTCCATCTCTG d89_CGGGCTGCTTCA d89_ATGATGAACACA d89_TACAAATGGATG d89_GGACTACACACA
+#PYROXD1                1                1                2                0                1                2
+#PYROXD2                0                0                0                0                0                0
+##PYURF                 4                5                6                6                2                0
+#QARS                   0                1                1                0                0                0
+#QDPR                   4                4                5                3                2                2
+#QKI                    2               21               15                8               10                2
+#QPCTL                  1                0                0                0                0                0
+# summary of total expression per single cell
+summary(colSums(d89))
+##  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   352    1008    1797    2682    3229   27087 
+
+# check how many genes are in each cell as frequency of cells with a given value of sum of genes
+pdf("d89_histogram_sum_expression_per_cell.pdf", width = 8, height = 6)   
+hist(colSums(d89),
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+dev.off()
+
+# check how many genes have at least one transcript in each cell
+at_least_one <- apply(d89 , 2, function(x) sum(x>0))
+pdf("d89_histogram_detected_genes_per_cell.pdf", width = 8, height = 6) 
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+dev.off()
+
+
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+#>= 10 cells (~0.1% of the data). Keep all cells with at least 200 detected genes
+d89 <- CreateSeuratObject(counts = d89, project = "10X_hES_d89", 
+                           min.cells = 10, min.features = 200)
+dim(d89) #12735  1803
+head(d89@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA
+#d89_GGTTGGCAGGCA        d89      25113         6121
+#d89_GCTCCATCTCTG        d89      27703         6536
+#d89_CGGGCTGCTTCA        d89      25604         6061
+#d89_ATGATGAACACA        d89      16091         4997
+#d89_TACAAATGGATG        d89      13318         4473
+#d89_GGACTACACACA        d89      16991         5182
+
+################################################################################################################
+
+
+#import data d77
+d77 <- read.csv("GSM4379132_d77_exp.csv", header = T, row.names = 1 )
+
+class(d77) #"data.frame"
+dim(d77) #19818   691
+
+# check out the first six genes and cells
+d77 [11000:11006, 1:6]
+#        d77_CATCCTAATGTC d77_ATGATCTCGTTT d77_CTAATATGTGAA d77_TTGTTCCTGGTT d77_TTGTCACACAGT d77_ACCTTGGCTTCT
+#PYROXD1                0                1                0                0                2                0
+#PYROXD2                0                0                0                0                0                0
+#PYURF                  4                1                2                3                1                0
+#QARS                   0                1                0                0                1                1
+#QDPR                   4                1                2                2                3                1
+#QKI                   11               14                7                4                7               10
+#QPCTL                  0                0                0                1                0                0
+# summary of total expression per single cell
+summary(colSums(d77))
+##  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   352    1008    1797    2682    3229   27087 
+
+# check how many genes are in each cell as frequency of cells with a given value of sum of genes
+pdf("d77_histogram_sum_expression_per_cell.pdf", width = 8, height = 6)   
+hist(colSums(d77),
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+dev.off()
+
+# check how many genes have at least one transcript in each cell
+at_least_one <- apply(d77 , 2, function(x) sum(x>0))
+pdf("d77_histogram_detected_genes_per_cell.pdf", width = 8, height = 6) 
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+dev.off()
+
+
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all genes expressed in
+#>= 10 cells (~0.1% of the data). Keep all cells with at least 200 detected genes
+d77 <- CreateSeuratObject(counts = d77, project = "10X_hES_d77", 
+                          min.cells = 10, min.features = 200)
+dim(d77) #10677   691
+head(d77@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA
+#d77_CATCCTAATGTC        d77      16420         4861
+#d77_ATGATCTCGTTT        d77      13445         4425
+#d77_CTAATATGTGAA        d77      11219         4124
+#d77_TTGTTCCTGGTT        d77      10198         3825
+#d77_TTGTCACACAGT        d77      12729         4333
+#d77_ACCTTGGCTTCT        d77      10996         3981
+
+
+#################################################################
+#create the "day" column
+#################################################################
+
+d85[["day"]] <- "d85" #this creates the "merge_final_clusters" column
+head(d85@meta.data)
+
+d77[["day"]] <- Idents(d77) #this creates the "merge_final_clusters" column
+head(d77@meta.data)
+
+d89[["day"]] <- Idents(d89) #this creates the "merge_final_clusters" column
+head(d89@meta.data)
+
+
+d104[["day"]] <- Idents(d104) #this creates the "merge_final_clusters" column
+head(d104@meta.data)
+
+#################################################################
+#integrating Dop-seq datasets (d77,d89,d104)
+#################################################################
+# normalize and identify variable features for each dataset independently
+hOLglia.list <- lapply(X = c(d77, d89, d104), FUN = function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = hOLglia.list)
+hOLglia.anchors <- FindIntegrationAnchors(object.list = hOLglia.list, anchor.features = features)# this command creates an 'integrated' data assay
+hOLglia.Drop <- IntegrateData(anchorset = hOLglia.anchors)
+dim(hOLglia.Drop) #2000 3271
+
+# specify that we will perform downstream analysis on the corrected data note that the original
+# unmodified data still resides in the 'RNA' assay
+DefaultAssay(hOLglia.Drop) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+hOLglia.Drop <- ScaleData(hOLglia.Drop, verbose = FALSE)
+hOLglia.Drop <- RunPCA(hOLglia.Drop, npcs = 30, verbose = FALSE)
+hOLglia.Drop <- RunUMAP(hOLglia.Drop, reduction = "pca", dims = 1:30)
+hOLglia.Drop <- FindNeighbors(hOLglia.Drop, reduction = "pca", dims = 1:30)
+hOLglia.Drop <- FindClusters(hOLglia.Drop, resolution = 0.4)
+
+# Visualization
+
+DimPlot(hOLglia.Drop, reduction = "umap", label= T, label.size =6, repel = TRUE, pt.size = 0.4) 
+ggsave("hOLglia.Drop_04.pdf", width = 12, height = 7.4)
+
+DimPlot(hOLglia.Drop, reduction = "umap", group.by = "day", label= T, label.size =6, repel = TRUE, pt.size = 0.4) 
+ggsave("hOLglia.Drop_sets_04.pdf", width = 12, height = 7.4)
+
+#To visualize the two conditions side-by-side, we can use the split.by argument to show each condition colored by cluster.
+
+DimPlot(hOLglia.Drop, reduction = "umap", split.by = "day", order = -1, label= T, label.size =6, repel = TRUE, pt.size = 0.4) + NoLegend()
+ggsave("hOLglia.Drop_sets_split_04.pdf", width = 16, height = 6)
+
+
+#################################################################
+#integrating Dop-seq (d77,d89,d104) and 10X datasets (d85)
+#################################################################
+# normalize and identify variable features for each dataset independently
+hOLglia.list <- lapply(X = c(d77, d85, d89, d104), FUN = function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = hOLglia.list)
+hOLglia.anchors <- FindIntegrationAnchors(object.list = hOLglia.list, anchor.features = features)# this command creates an 'integrated' data assay
+hOLglia.allESCs <- IntegrateData(anchorset = hOLglia.anchors)
+dim(hOLglia.allESCs) #2000 7690
+
+# specify that we will perform downstream analysis on the corrected data note that the original
+# unmodified data still resides in the 'RNA' assay
+DefaultAssay(hOLglia.allESCs) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+hOLglia.allESCs <- ScaleData(hOLglia.allESCs, verbose = FALSE)
+hOLglia.allESCs <- RunPCA(hOLglia.allESCs, npcs = 30, verbose = FALSE)
+hOLglia.allESCs <- RunUMAP(hOLglia.allESCs, reduction = "pca", dims = 1:30)
+hOLglia.allESCs <- FindNeighbors(hOLglia.allESCs, reduction = "pca", dims = 1:30)
+hOLglia.allESCs <- FindClusters(hOLglia.allESCs, resolution = 0.4)
+
+
+# Visualization
+
+DimPlot(hOLglia.allESCs, reduction = "umap", label= T, label.size =6, repel = TRUE, pt.size = 0.4) 
+ggsave("hOLglia.allESCs_04.pdf", width = 12, height = 7.4)
+
+DimPlot(hOLglia.allESCs, reduction = "umap", group.by = "day", label= T, label.size =6, repel = TRUE, pt.size = 0.4) 
+ggsave("hOLglia.allESCs_sets_04.pdf", width = 12, height = 7.4)
+
+#To visualize the two conditions side-by-side, we can use the split.by argument to show each condition colored by cluster.
+
+DimPlot(hOLglia.allESCs, reduction = "umap", split.by = "day", order = -1, label= T, label.size =6, repel = TRUE, pt.size = 0.4) + NoLegend()
+ggsave("hOLglia.allESCs_sets_split_04.pdf", width = 20, height = 6)
+
+
+################################################################################################################
+#USING MARKERS TO CHARACTERIZE CLUSTERS
+################################################################################################################
+###################################################################################################### 
+#NSC, OPC, iOL, mOL, astrocyte markers (Castello-Branco embryonic, postnatal and adult datasets)
+###################################################################################################### 
+#Dotplot NPCs and OLglia stages markers
+genes <- as.vector(toupper(c("Neurog2","Neurod1","Eomes","Dlx2",  "Sox11","Sox4", "Dcx","Sox9","Sox2", "Sox6", "Sox8",  
+                             "Ascl1","Ednrb","Egfr", "Cspg4","Pdgfra", "Pcdh15", "Nkx2-2", "Olig2", "Sox10", "Olig1", "Gpr17",  
+                             "Itpr2", "Tns3",  "Mbp", "Mag", "Cnp", "Plp1", "Mog", "S100b" )))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y="Cluster")
+ggsave("DotPlot_markers_regulators_hPDGFRa_Tom_allESCs.pdf", width = 13, height = 6)
+
+
+#TFs_Neuro_Glial markers
+genes <- toupper(c( "S100b", "Aqp4", "Gfap", "Aldh1l1",   "Cdkn1c",  "Cspg4","Pdgfra", "Sox11","Sox4","Dlx2", "Dcx","Bcl2","Ednrb",
+                    "Sox9","Sox2", "Sox6", "Sox8",  "Ascl1","Nkx2-2", "Olig2", "Olig1", "Sox10", "Gpr17",  "Itpr2", "Tns3",  "Mbp", 
+                    "Mag", "Cnp", "Plp1", "Mog", "Csf1r","Cx3cr1","Ly86"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") + 
+  labs(x=NULL, y="Cluster")
+ggsave("DotPlot_astro_OPC_NPC_oligo_microglia.pdf", width = 13, height = 6)
+
+
+################
+#OPC markers
+################
+OPCmarkers <- toupper(c( "Pdgfra", "Cspg5",  "Cspg4",  "Ascl1","Emid1","Tmem255b","Ncan", "Rlbp1",  "Kcnip3", "Rgcc", "Sdc3","Ednrb", "Pcdh15", "Sox11", 
+                         "Tmem100", "Spon1", "Gria3", "Traf4", "Matn4", "3110035E14Rik" ))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  OPCmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_OPC_markers_hPDGFRa_Tom_allESCs.pdf", width = 10, height = 6)
+
+
+
+################
+#COP-iOL1 markers  
+################
+COPiOL1_markers <- toupper(c("Tmem108", "Ptpre","Bmp4", "Pdcd4", "AI414108", "Tubb2b", "Ppfibp1", "Neu4","Trio", "Tnr",  "Arsb",
+                             "Ust", "Lrrc42", "Epb4.1l2", "Sgk1", "Cyfip2","Gpr17", "Fyn","Slc1a1", "Tcf7l2", "Frmd4a", "Bcan",
+                             "Mpzl1", "Cadm1", "Cadm2", "Tns3", "Enpp6", "Klhl5", "Grlf1", "Dynll2", "Pik3r3", "Map1b"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(COPiOL1_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_COP_iOL1_markers.pdf", width = 14, height = 5.5)
+
+
+################
+#iOL2 markers  
+################
+
+iOL2_markers <- toupper(c("Rras2", "9630013A20Rik", "Rims2", "Fam107b",  "Prom1",
+                          "Fkbp9",  "Rap2a", "Ubl3", "Sema6a", "Tmem163", "Rell1",
+                          "Arpc1b",  "Add1", "Eml1", "Pdia6", "Kndc1", "Hmgcr", "Reep5", "Mt1",
+                          "Il23a", "Ninj1", "Onecut2","Sema4f", "St8sia3","Ctps","Tmem141","Rell1","Pcdh17",
+                          "Gnb4", "Ctsl",  "Sox2ot", "Gng12",  "Ttyh1",  "Plat",  "Marcksl1"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(iOL2_markers))
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_iOL2_markers.pdf", width = 12, height = 5.5)
+
+
+
+################
+#MFOL markers  
+################
+
+MFOL_markers <- toupper(c("Tmod1","Slc9a3r2","Igsf8","Hs3st1", "Mal", "Pdlim2","Opalin", "Grb14",  
+                          "Lgi3",  "Cldn11" ))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  MFOL_markers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_MFOL_markers.pdf", width = 6, height = 5.5)
+
+
+################
+#MOL1 markers  
+################
+
+MOL1_markers <- toupper(c("Apod", "Trf",  "Gpm6b", "Ugt8a",  "Fth1", "Gng11", "Dbndd2",  "Hapln2", "Acot7", "Gstm5", "Elovl5",
+                          "Spock3", "Gjb1", "B3galt5", "Cpd", "Slco3a1", "Itgb4", "Anln", "Klk6", "Cd59a","Mgst3","Pmp22","Anxa5",
+                          "Glo1","Sypl","Sccpdh", "Fez1", "Sept8", "Prr5l", "Gpd1", "Mid1ip1",  "Efr3b", "Chst2",  "Hrsp12", 
+                          "Tmem254b","Itgb4", "Plin3"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(MOL1_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_MOL1_markers.pdf", width = 13, height = 5.5)  
+
+
+################
+#MOL2 markers  
+################ 
+
+MOL2_markers <- toupper(c("Gpr37", "C030029H02Rik", "Grm3", "Sez6l2", "Edil3",  "Cntn2", "Glul", "Rtn4",
+                          "Kif1b", "Atp1b3", "Stmn1", "Ttyh2", "Trim2", "Jph4", "Gstp1", "Rhob", "Sec11c",
+                          "Sepw1", "Fgfr2", "Erbb2ip", "Pip4k2a", "Gnai1", "Spock1", "Etv1", "Olfml1", "Car2", 
+                          "Qdpr", "Gatm", "Tubb4a", "Stmn4", "Ndrg1", "Aplp1", "Neat1", "Il33","Dpy19l1", 
+                          "Serpinb1a", "Ank2", "Pls1", "Zdhhc20", "Dnajb2", "Scd1", "Trim59", "Pex5l", "Tmem229a", 
+                          "Rassf2", "Ppp1cc"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  MOL2_markers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_MOL2_markers.pdf", width = 16, height = 5.5) 
+
+
+
+
+##################################################################### 
+#NSC and progenitor cells in the embryo (Polioudakis_Neuron_2019)
+##################################################################### 
+
+#ventral Radial Glia embryonic 
+vRG_markers<- c("FOS", "EGR1", "VIM", "HES1", "JUN", "PTN", "CYR61", "SFRP1", "ID4", "SOX2", "SOX9", "FABP5", "ZFP36L1", "IER2", "SPARC", "CLU", "PEA15", 
+                "COL11A1", "DBI", "CNN3", "ITGB8", "FBXO32", "SLC1A3", "C8orf4", "PAX6", "AKAP12", "PTPRZ1", "FABP7", "C1orf61", "FGFBP3", "CREB5", "HSPB1", "SEPT11", "NRG1", "CDO1")
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(vRG_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_vRG_markers.pdf", width = 15, height = 5.5)
+
+
+
+#outer Radial Glia embryonic 
+mouse_symbols <- 
+  c("PTN", "VIM", "PEA15", "SFRP1", "PTPRZ1", "FABP7", "SOX2", "SLC1A3", "HES1", "FOS", "ID4", "JUN", "DBI", "FABP5", "NRG1", "C1orf61", 
+    "HOPX", "GPM6B", "CLU", "CST3", "PON2", "FAM107A", "HSPB1", "SOX9", "TTYH1", "AKAP12", "HSPA1A", "PLPP3", "ZFP36L1", "HSPA1B", "IQGAP2", 
+    "FGFBP3", "CARHSP1", "MOXD1", "TMEM132B", "SAT1", "PAX6", "C8orf4", "MT3", "BCAN", "INTU", "COL11A1", "QKI", "LRRC3B", "CREB5", "PSAT1",
+    "LGALS3", "PALLD", "MSI2")
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(mouse_symbols))
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_oRG_markers.pdf", width = 18, height = 5.5)
+
+
+
+#Progenitors in G2 or M phase
+PgG2M_markers<- c("CENPF", "TOP2A", "HMGB2", "MKI67", "NUSAP1", "ASPM", "SMC4", "PTTG1", "PRC1", "TPX2", "CENPE", "UBE2C", "CKAP2", "ARL6IP1", "HMGN2", "CKS2", "NUF2", 
+                  "DLGAP5", "ANP32E", "TUBA1B", "SGO2", "CCNB1", "MIS18BP1", "RAD21", "KIF11", "CDK1", "TMPO", "CKAP2L", "KIF4A", "KNL1", "GTSE1", "BIRC5", "BUB1", "NDC80")
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(PgG2M_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_PgG2M_markers.pdf", width = 15, height = 5.5)
+
+
+
+#Progenitors in S phase
+PgS_markers<- c("HMGB2", "HIST1H4C", "HMGN2", "HIST1H1D", "SMC4", "TOP2A", "TUBA1B", "MKI67", "CENPF", "NUSAP1", "CENPU", "HELLS", "KIAA0101", "H2AFZ", "ANP32E", "DEK", 
+                "ATAD2", "PCNA", "SOX2", "PTN", "NASP", "CCND2", "HMGB1", "USP1", "TMPO", "PRC1", "DUT", "SYNE2", "EZH2", "SMC2", "HES6", "CLSPN", "KIF15", "HIST1H1E")
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(PgS_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_PgS_markers.pdf", width = 15, height = 5.5)
+
+
+
+
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+new.cluster.ids <- c("OPC1","iOL2","cycOPC2",  "oRG", "OPC2", "cycOPC1", "iOL1", "vRG")
+names(new.cluster.ids) <- levels(hPDGFRa_Tom_allESCs)
+#rename the identifiers (cluster names)
+hPDGFRa_Tom_allESCs <- RenameIdents(hPDGFRa_Tom_allESCs, new.cluster.ids)
+levels(hPDGFRa_Tom_allESCs)
+# "OPC1"    "iOL2"    "cycOPC2" "oRG"     "OPC2"    "cycOPC1" "iOL1"    "vRG" 
+
+#reordering the clusters
+hPDGFRa_Tom_allESCs@active.ident <- factor(hPDGFRa_Tom_allESCs@active.ident, levels= c("vRG", "oRG", "OPC1", "cycOPC1", "cycOPC2", "OPC2",  "iOL1", "iOL2"))
+levels(hPDGFRa_Tom_allESCs) # "vRG"     "oRG"     "OPC1"    "cycOPC1" "cycOPC2" "OPC2"    "iOL1"    "iOL2"  
+
+
+DimPlot(hPDGFRa_Tom_allESCs, reduction = "umap",  label= T, label.size =6, repel = TRUE, pt.size = 0.4) + NoLegend()
+ggsave("hPDGFRa_Tom_allESCs_UMAP_names.pdf", width = 12, height = 7.4)
+
+
+
+##################################################################### 
+#microglia markers
+##################################################################### 
+#microglia markers (embryonic Polioudakis_Neuron_2019)
+microglialmarkers <- toupper(c("C1qa", "Csf1r", "Cx3cr1", "Lyz2", "Pf4", "C1qb", "Cd14", "Tyrobp", 
+                               "Fcgr3",  "Laptm5", "Aif1",  "Ctss", "Ly86", "F13a1", "Ccl12", "C1qc", 
+                               "Ccl7", "Hpgds", "Mrc1", "Rnase4", "Ccl3", "Rgs1", "Gpr34", "Ctsc", "Apoe"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  microglialmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot__microglial_markers_hPDGFRa_Tom_allESCs.pdf", width = 10, height = 10)
+
+
+#microglia homeostatic markers (P7, Jim & Arlotta Science 2020)
+microglial_P7_homeostatic <- toupper(c("Serpine2", "Plxdc2", "Cst3", "Gpr34", "P2ry12", "Olfml3", "Ldhb", "Pde3b", "Cd81", "Sparc", "Hexb", "Rhob", "Lgmn"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  microglialmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot__microglial_P7_homeostatic_markers_hPDGFRa_Tom_allESCs.pdf", width = 10, height = 10)
+
+
+#microglia inflammatory markers (P7, Jim & Arlotta Science 2020)
+microglial_P7_homeostatic <- toupper(c("Marcksl1", "Nfkbid", "Egr2", "Ccl2", "Ccl7", "Ccl12", "Ccl4", "Nr4a1", "Nfkbiz", "Rcan1", "Tnf", "Ier3"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  microglialmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot__microglial_P7_inflammatory_markers_hPDGFRa_Tom_allESCs.pdf", width = 10, height = 10)
+
+
+##################################################################### 
+#Astrocyte markers
+##################################################################### 
+
+#Astrocyte markers
+astromarkers <- toupper(c("Rarres2", "Ccdc153", "Gja1","Vim", "Aqp4","Mlc1", "Mia", "Enkur", "Sox9", 
+                          "Pltp", "Tm4sf1", "Sdc4", "Fgfr3", "Slc4a4", "Agt", "S1pr1", "Ezr", "Aldoc"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  rev(astromarkers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_astro_markers.pdf", width = 8, height = 5)
+
+
+
+#Astrocyte homeostatic blue markers (P7, Jim & Arlotta Science 2020)
+
+astro_homeostatic1 <- toupper(c("Hsd11b1", "Chst1", "Kcnip3", "Phactr3", "Tspan7", "Chrdl1", "Fam212b", "St6galnac5", "Cth", "Gabbr2", "Efhd2", "AW011738",
+                                "Grm3", "0610040J01Rik", "Abcb9", "Ptprz1", "Akr1b10", "Timp4", "Eps8", "Slco1c1", "Aplp1", "Slc7a10", "Grm5", "Dhcr7", "Ccnd1", 
+                                "S100b", "Gpc5", "Cadm1", "Arpp21", "Rnf215", "Slc13a5", "Etv4", "Dbx2", "Olig2", "Cbr3", "Hbegf", "Cdo1", "Vldlr"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  astro_homeostatic1) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_astro_homeostatic1.pdf", width = 12, height = 5)
+
+
+#Astrocyte homeostatic turquoise markers (P7, Jim & Arlotta Science 2020)
+astro_homeostatic2 <- toupper(c("Prex2", "Col9a1", "Arhgef4", "Bmpr2", "Nrp2", "Mgat5", "Adora1", "Rgs2", "Glul", "Tnr", "Myoc", "Ccdc3", "Nsmf", "Ggta1", 
+                                "Nr4a2", "Pkp4", "Ssfa2", "Slc1a2", "Cd44", "Serf2", "Slc20a1", "Btbd3", "Ptprt", "Matn4", "Elmo2", "Sulf2", "Usp9x", "Slc6a8", 
+                                "Plp1", "Gpm6b", "Trim2", "Slc16a1", "Unc5c", "Bmpr1b", "Grin3a", "Rspo1", "Man1c1", "Ptchd2", "Ski", "Agrn", "Prkag2", "Hopx", "Miat",
+                                "Hspb8", "Clip2", "Tsc22d4", "D630045J12Rik", "Gadd45a", "Atoh8", "Tmem150a", "Tgoln1", "Ctnna2", "Slc6a6", "Adamts9", "A2m", "Kcna6", 
+                                "Zfp36", "Clip3", "Nav2", "Arhgef17", "Tab2", "Marcks", "Sgpl1", "Slc7a2", "Mfap3l", "Ncan", "Adgrl1", "Zfp423", "Mt3", "Mt2", "Mt1", 
+                                "Cadps", "Opcml", "Sorl1", "Cryab", "Islr", "6030419C18Rik", "Smad6", "Igdcc4", "Pth1r", "Tmie", "Csrnp1", "Tmem158", "Nsg2", "Wwc1", 
+                                "Col23a1", "Slc36a2", "Serpinf1", "Taok1", "Nog", "Stat3", "Dusp3", "Prkca", "Fasn", "Aldh5a1", "Mylip", "Msx2", "Erbb2ip", "Map3k1", 
+                                "Id2", "Rgs6", "Lifr", "Ank", "Enpp2", "Plec", "Maff", "Shisa8", "03-sept", "Fam19a5", "Slc38a1", "Snai2", "Nfkbiz", "Robo2", "Adamts1", 
+                                "Tulp4", "Paqr4", "Fgd2", "H2-DMa", "H2-DMb1", "H2-Ab1", "H2-Aa", "H2-Eb1", "Ddr1", "Npc1", "Aqp4", "Nrep", "Cd74", "Cidea", "Smad7", 
+                                "Fth1", "Aldh1a1", "Kank1", "Scd2"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  astro_homeostatic2) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_astro_homeostatic2.pdf", width = 32, height = 5)
+
+
+
+#Astrocyte activation green markers (P7, Jim & Arlotta Science 2020)
+astro_activation <- toupper(c("Bgn", "S100a4", "S100a11", "S100a10", "Igfbp7", "Ifitm3", "C1ql1", "Timp2", 
+                              "S1pr3", "Ntrk2", "Actn1", "Serpina3n", "Ccdc74a", "C4b"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  astro_activation) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_astro_activation.pdf", width = 9, height = 5)
+
+
+#aNSC3 markers (CLBNxs.markers Excel file)
+aNSC3 <- toupper(c("Hells", "Mcm6", "Mcm3", "Mcm7", "Ccnd1", "Lig1", "Uhrf1", "Dtl", "Ung", "Rfc3", "Mcm2", "Dctpp1", "Mcm4", "Mcm5", 
+                   "Chaf1b", "E2f1", "Cdt1", "Cdc6", "Timeless", "Chaf1a", "Chek1", "Fignl1", "Exo1", "Shmt1", "Rmi2", "Zfp367", "Dhfr", 
+                   "Lrrfip1", "Gins2", "Slfn9", "Fen1", "Pcna", "Cenps", "Cdk6", "Rfc4", "Ccne2", "Wdr76", "Rpa2", "Pola2", "Clspn", "Wdhd1",
+                   "Dut", "Prim1", "Nme4", "Dnmt1", "Gmnn", "Atad5", "Umps", "Tfdp1", "Cenpk", "Cdca7", "Zmynd19", "Nptx2", "Rad54l", 
+                   "Psmc3ip", "Mxra7", "Topbp1", "Nbl1", "Rcor2", "Fam60a", "Baz1a", "Msh6", "Mycn", "Rad51ap1", "E2f3", "Hes6", "Ctps", 
+                   "Egfr", "Brca1", "Mms22l", "Rad51", "Trim27", "Msh2", "Tyms", "Rrm2", "Coro1c", "Cenph", "Mettl1", "Dll1", "Traf4", "Lsm2",
+                   "Lyar", "Polr3k", "Rbbp8", "Vars", "Rfc5", "Nmral1", "Cdc25a", "Brca2", "Cenpm", "Gar1", "Camk2n2", "Atad2", "Rrm1", "Lmnb1",
+                   "Gse1", "Ppat", "Insm1", "Cks1b", "Pola1", "Eri1", "Wee1", "Pclaf", "Mpp6", "Smc2"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  aNSC3) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_aNSC3.pdf", width = 28, height = 5)
+
+
+##################################################################### 
+#Pericytes, VLMC and endothelial markers
+##################################################################### 
+
+#VLMC markers (adult mice, Tasic_2018)
+VLMCmarkers <- toupper(c("S100a11", "Col1a1", "Lum", "Dcn", "Aox3", "Bgn", "Osr1", "Gjb2", "Ccl19", "Cd74", 
+                         "Slc47a1", "Lypd2", "Ctxn3", "Nnat", "Spp1"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  VLMCmarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_VLMC_markers_markers.pdf", width = 8, height = 5.5)
+
+
+#Pericytes markers (adult mice, Tasic_2018)
+Pericytemarkers  <- toupper(c("Pdgfrb", "Kcnj8", "Abcc9", "Atp13a5", "Art3", "Ace2"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = Pericytemarkers ) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_Pericyte_markers.pdf", width = 5, height = 5.5)
+
+
+#Endothelial markers (adult mice, Tasic_2018)
+Endothmarkers  <- toupper(c("Acta2", "Angpt1", "Des", "Aoc3", "Slc38a5", "Pdgfb", "Nos3", "Eltd1", "Pecam1", "Ctla2a", 
+                            "Emcn", "Sema3c", "Tek", "Cytl1", "Bmx", "Sema3f", "Gja5"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = Endothmarkers ) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_Endothelial_markers.pdf", width = 8, height = 10)
+
+
+endoth_markers <- toupper(c( "Slc40a1", "Lama4",  "Hspb1", "Wfdc1",  "Tes",  "Tshz2", "Cdc42ep3", "Rbms1", "Ctsh", "Palmd", "Fn1", 
+                             "Rhoj", "Col4a2", "Igfbp7", "Gng11",  "Ppic", "Cdkn2b",  "Cast",  "Ndnf", "Pltp", "Myo1b", "Ppfibp1",
+                             "Vat1", "Myh9",  "Tagln2",  "Cd151", "Csrp2", "Tpm4", "Wls", "Plekha1"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  endoth_markers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_endoth_markers1.pdf", width = 12, height = 5)
+
+
+#endothelial & mural cell markers (Neonatal_SVZ_CLBNxs.markers, OR lab)
+endoth_markers <- toupper(c("Cldn5", "Flt1", "Ly6c1", "Ctla2a", "Ptprb", "Slco1a4", "Kdr", "Adgrl4", "Esam", "Eng", "Car4", "Hmcn1", "Abcb1a", "Slc22a8", "Adgrf5", "Nid1", "Cd34", "Ly6a", "Ebf1",
+                            "Cd93", "Cdh5", "Foxq1", "Slc40a1", "Vwf", "BC028528", "Lmo2", "Slc38a5", "Nostrin", "Lama4", "Srgn", "Slfn5", "Rbpms", "Rassf9", "Gimap6", "Cavin2", "Rapgef5", "Sox18", 
+                            "Rapgef4", "Rasgrp3", "Cgnl1", "Lef1", "Mecom", "Hspb1", "Ly75", "Apold1", "Wfdc1", "Lsr", "Icam2", "Foxc1", "Grap", "Emcn", "Tdrp", "Acvrl1", "AU021092", "Fli1", "Pdgfb", 
+                            "Tie1", "Tmem204", "Fam129a", "Ushbp1", "C130074G19Rik", "Tek", "Ecscr", "Clec2d", "Sox17", "Meox1", "Cnn2", "Ocln", "Robo4", "Foxf2", "F11r", "Fam43a", "Pde8a", "Hspa12b", 
+                            "Arap3", "Thsd1", "Gimap1", "Tes", "Scarf1", "Flt4", "Pecam1", "Ets1", "Rasip1", "Slc39a8", "Arhgap29", "Tshz2", "Cdc42ep3", "Jag2", "Rbms1", "Podxl", "Vwa1", "Anxa3", "Tm4sf1", 
+                            "Apcdd1", "Hspg2", "Nos3", "Cmtm8", "Slco2b1", "Ctsh", "Zic3", "Nrp1", "St8sia4", "Tgfbr2", "Itga4", "Egfl7", "Pglyrp1", "Cobll1", "Lyn", "Palmd", "Fn1", "Jcad", "Ece1", "Eogt",
+                            "Mfsd2a", "Fry", "Cav1", "Casp8", "Dock9", "Afap1l1", "Plxnd1", "Kank3", "Gatm", "Rhoj", "Abcg2", "Itm2a", "Adgre5", "Col4a2", "Dlc1", "Tiam1", "Synm", "Igfbp7", "Man2a1", "Arhgef5", 
+                            "Gng11", "Slc9a3r2", "Ppic", "Phldb2", "Cdkn2b", "Esyt1", "Cbfa2t3", "Eva1b", "Rflnb", "Cast", "St3gal6", "Pcdh19", "Ndnf", "Arhgap31", "Itga1", "Dock6", "Pltp", "Myo1b", "Cavin1", 
+                            "Sipa1", "Ablim1", "sept-04", "Col4a1", "Pcdh1", "Pdzd2", "Plk2", "Parvb", "Cd59a", "Ltbp4", "Tns1", "Dab2", "Ccdc141", "Crybg3", "Il10rb", "Isyna1", "Ly6e", "Nomo1", "Ostf1", "Slc7a1",
+                            "Slc7a5", "Ptprm", "Sgk1", "Ppfibp1", "Vat1", "Myh9", "Ttyh2", "Tagln2", "Jup", "Lipa", "Fzd6", "Sgms1", "Fcgrt", "Epas1", "Sorbs2", "Apbb2", "Slc16a1", "Arhgap18", "Itpkb", "Rassf3",
+                            "Cd151", "Kitl", "Map4k2", "B2m", "Rras", "Ramp2", "Tfrc", "Grb14", "Dgkh", "Utrn", "Luzp1", "Slc31a1", "Csrp2", "Heg1", "Lamc1", "Tpm4", "Wls", "Nkd1", "Pros1", "Arpc1b", "Slc2a1", 
+                            "Ano6", "Mast4", "Dusp6", "Adgrl3", "Ptp4a3", "Ifnar2", "Plat", "Vasp", "Bok", "Cav2", "Plod1", "Plekha1"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  endoth_markers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_endoth_markers2.pdf", width = 12, height = 5)
+
+
+##################################################################### 
+#neuronal markers
+##################################################################### 
+
+#Pyramidal neuron markers (P7, Jim & Arlotta Science 2020)
+Pyramidal_markers  <- toupper(c("Inpp4a", "Pam", "Dcaf6", "Nmt2", "Yme1l1", "Set", "Lrrc8a", "Slc24a5", "Myef2", "Ncoa3", "Cask", "Skil", "Rap2b", "Slc39a1", "Rbm15", "Klhl9", "Ythdf2", "Gnb1", "Gatad1", "Insig1",
+                                "Actb", "Kdelr2", "Cbx3", "Sfxn5", "Iqsec1", "Tmf1", "Dpf1", "Shank1", "Klf13", "Abhd2", "Mcmbp", "Sec23ip", "Hsf2", "Sirt6", "Ppm1h", "Micu3", "Lzts1", "Ncan", "Upf1", "Supt16", 
+                                "Dpysl2", "Spry2", "Zbtb44", "Scn2b", "Ncam1", "AI593442", "Dapk2", "Clasp2", "Actr2", "Alkbh5", "Arhgap44", "Gas7", "Kdm6b", "Dusp3", "Fn3krp", "Zscan26", "Atxn1", "Hmgcr", "Map1b",
+                                "Paip1", "Dbpht2", "St13", "Kmt2d", "Mkl2", "Rrn3", "Marf1", "Lrrc58", "Gsk3b", "Tmem181a", "D17H6S53E", "Birc6", "Dctn4", "Otub1", "Ric1", "Pdcd4"))
+
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  Pyramidal_markers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_Pyramidal_markers.pdf", width = 22, height = 5)
+
+
+
+#General neuronal markers
+Neuron_markers<- c("STMN2", "POU2F2", "GAP43", "NEFM", "STMN4", "DCX", "MAP2", "ROBO3", "KIF5C", "CRABP1")
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features =  unique(Neuron_markers)) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_Neuron_markers.pdf", width = 7, height = 5)
+
+
+#Neurite development  (P7, Jim & Arlotta Science 2020)
+neurite_markers  <- toupper(
+  c("Inpp4a", "Pam", "Dcaf6", "Nmt2", "Yme1l1", "Set", "Lrrc8a", "Slc24a5", "Myef2", "Ncoa3", "Cask", "Skil", "Rap2b", "Slc39a1", "Rbm15", "Klhl9",
+    "Ythdf2", "Gnb1", "Gatad1", "Insig1", "Actb", "Kdelr2", "Cbx3", "Sfxn5", "Iqsec1", "Tmf1", "Dpf1", "Shank1", "Klf13", "Abhd2", "Mcmbp", "Sec23ip", 
+    "Hsf2", "Sirt6", "Ppm1h", "Micu3", "Lzts1", "Ncan", "Upf1", "Supt16", "Dpysl2", "Spry2", "Zbtb44", "Scn2b", "Ncam1", "AI593442", "Dapk2", "Clasp2",
+    "Actr2", "Alkbh5", "Arhgap44", "Gas7", "Kdm6b", "Dusp3", "Fn3krp", "Zscan26", "Atxn1", "Hmgcr", "Map1b", "Paip1", "Dbpht2", "St13", "Kmt2d", "Mkl2",
+    "Rrn3", "Marf1", "Lrrc58", "Gsk3b", "Tmem181a", "D17H6S53E", "Birc6", "Dctn4", "Otub1", "Ric1", "Pdcd4"))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = Glutamarkers) 
+q<- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+          axis.text.y = element_text(size=12,face = "bold")) +
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+                      discrete = FALSE, option = "D") +     labs(x=NULL, y="Cluster")
+ggsave("DotPlot_hPDGFRa_Tom_allESCs_neurite_markers.pdf", width = 10, height = 5)
+
+
+############################################################################################################
+
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+levels(hPDGFRa_Tom_allESCs) #"NSC"    "OPC"    "OPCs"   "OPCg2m" "iOL"    "mOL"   
+new.cluster.ids <-  c("pOPC", "cOPC", "iOL1", "NSC", "cyOPC",  "priOPC",  "cycOPC", "Astro",   "iOL2", "Endoth", "10", "NPC") 
+names(new.cluster.ids) <- levels(hPDGFRa_Tom_allESCs)
+levels(hPDGFRa_Tom_allESCs)
+#rename the identifiers (cluster names)
+hPDGFRa_Tom_allESCs <- RenameIdents(hPDGFRa_Tom_allESCs, new.cluster.ids)
+levels(hPDGFRa_Tom_allESCs) #"pOPC"   "cOPC"   "iOL1"   "NSC"    "cyOPC"  "priOPC" "cycOPC" "Astro"  "iOL2"   "Endoth" "10"     "NPC"   
+
+
+
+#################################################################  
+#reordering the clusters
+#################################################################
+hPDGFRa_Tom_allESCs@active.ident <- factor(hPDGFRa_Tom_allESCs@active.ident, levels= 
+                                             c("NPC","Astro","NSC","priOPC","cycOPC","cyOPC","cOPC", "pOPC", "iOL1",  "iOL2", "Endoth", "10" ) )
+levels(hPDGFRa_Tom_allESCs) #  "NPC"    "Astro"  "NSC"    "priOPC" "cycOPC" "cyOPC"  "cOPC"   "pOPC"   "iOL1"   "iOL2"   "Endoth" "10"  
+
+#################################################################
+#create the "clusters" column
+#################################################################
+names(new.cluster.ids) <- levels(hPDGFRa_Tom_allESCs)
+hPDGFRa_Tom_allESCs <- RenameIdents(hPDGFRa_Tom_allESCs, new.cluster.ids)
+hPDGFRa_Tom_allESCs[["clusters"]] <- Idents(hPDGFRa_Tom_allESCs) #this creates the "final_clusters" column
+head(hPDGFRa_Tom_allESCs@meta.data)
+
+table(Idents(hPDGFRa_Tom_allESCs))
+#NPC  Astro   NSC    priOPC  cycOPC  cyOPC   cOPC   pOPC   iOL1   iOL2  Endoth      10 
+#51    344    933     462     364     869    1088   1981   1087    297    108      106 
+
+
+############################################################################################################
+#Subsetting  object to keep only neural cells 
+############################################################################################################
+
+levels(hPDGFRa_Tom_allESCs)
+# "NPC"    "Astro"  "NSC"    "priOPC" "cycOPC" "cyOPC"  "cOPC"   "pOPC"   "iOL1"   "iOL2"   "Endoth" "10"  
+hOLglia_allESCs <- subset(hPDGFRa_Tom_allESCs, idents = c("NSC","priOPC","cycOPC","cyOPC","cOPC", "pOPC", "iOL1",  "iOL2"  ), invert = FALSE)
+levels(hOLglia_allESCs) #"NSC"    "priOPC" "cycOPC" "cyOPC"  "cOPC"   "pOPC"   "iOL1"   "iOL2"  
+
+hOLglia_allESCs <- RunUMAP(hOLglia_allESCs, dims = 1:30)
+
+DimPlot(hOLglia_allESCs, reduction = "umap", label = TRUE, label.size = 6, pt.size = 0.5) 
+ggsave("hOLglia_allESCs_UMAP.pdf", width = 10, height = 6.00)
+
+table(Idents(hOLglia_allESCs))
+#NSC priOPC cycOPC  cyOPC   cOPC   pOPC   iOL1   iOL2 
+#933    462    364    869   1088   1981   1087    297
+
+############################################################################################################
+#New scaling and PCA for the new hOLglia_allESCs Seurat object 
+############################################################################################################
+
+# unmodified data still resides in the 'RNA' assay
+DefaultAssay(hOLglia_allESCs) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+hOLglia_allESCs <- ScaleData(hOLglia_allESCs, verbose = FALSE)
+hOLglia_allESCs <- RunPCA(hOLglia_allESCs, npcs = 30, verbose = FALSE)
+hOLglia_allESCs <- RunUMAP(hOLglia_allESCs, reduction = "pca", dims = 1:30)
+hOLglia_allESCs <- FindNeighbors(hOLglia_allESCs, reduction = "pca", dims = 1:30)
+hOLglia_allESCs <- FindClusters(hOLglia_allESCs, resolution = 0.4)
+
+
+DimPlot(hOLglia_allESCs, reduction = "umap", label = TRUE, label.size = 6, pt.size = 0.5) 
+ggsave("hOLglia_allESCs_UMAP_new_clusters.pdf", width = 10, height = 6.00)
+
+head(hOLglia_allESCs@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA day integrated_snn_res.0.8 seurat_clusters integrated_snn_res.0.4 clusters
+#d77_CATCCTAATGTC        d77      16420         4861 d77                      5               2                      2     cOPC
+#d77_ATGATCTCGTTT        d77      13445         4425 d77                      5               2                      2     cOPC
+#d77_CTAATATGTGAA        d77      11219         4124 d77                      5               2                      2     cOPC
+#d77_TTGTTCCTGGTT        d77      10198         3825 d77                      0               3                      3     iOL1
+#d77_TTGTCACACAGT        d77      12729         4333 d77                      5               2                      2     cOPC
+#d77_ACCTTGGCTTCT        d77      10996         3981 d77                      7               2                      2     cOPC
+
+
+hOLglia_allESCs <- readRDS("hOLglia_allESCs.rds")
+head(hOLglia_allESCs@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA day integrated_snn_res.0.8 seurat_clusters integrated_snn_res.0.4 clusters
+#d77_CATCCTAATGTC        d77      16420         4861 d77                      5               1                      1     cOPC
+#d77_ATGATCTCGTTT        d77      13445         4425 d77                      5               1                      1     cOPC
+#d77_CTAATATGTGAA        d77      11219         4124 d77                      5               1                      1     cOPC
+#d77_TTGTTCCTGGTT        d77      10198         3825 d77                      0               2                      2     iOL1
+#d77_TTGTCACACAGT        d77      12729         4333 d77                      5               1                      1     cOPC
+#d77_ACCTTGGCTTCT        d77      10996         3981 d77                      7               1                      1     cOPC
+
+DimPlot(hOLglia_allESCs, reduction = "umap", label = TRUE, label.size = 6, pt.size = 0.5) 
+ggsave("hOLglia_allESCs_UMAP_2.pdf", width = 10, height = 6.00)
+
+#################################################################
+#Renaming the  clusters
+#################################################################
+levels(hOLglia_allESCs) 
+# "NSC"    "priOPC" "cycOPC" "cyOPC"  "cOPC"   "pOPC"   "iOL1"   "iOL2"    
+new.cluster.ids <-  c("NSC","priOPC","cycOPC","cycOPC","OPC", "OPC", "iOL1",  "iOL2") 
+names(new.cluster.ids) <- levels(hOLglia_allESCs)
+levels(hOLglia_allESCs)
+#rename the identifiers (cluster names)
+hOLglia_allESCs <- RenameIdents(hOLglia_allESCs, new.cluster.ids)
+levels(hOLglia_allESCs) #"NSC"    "priOPC" "cycOPC" "OPC"    "iOL1"   "iOL2"
+
+DimPlot(hOLglia_allESCs, reduction = "umap", label = TRUE, label.size = 6, pt.size = 0.5) 
+ggsave("hOLglia_allESCs_UMAP_new_names.pdf", width = 10, height = 6.00)
+table(Idents(hOLglia_allESCs))
+#NSC priOPC cycOPC    OPC   iOL1   iOL2 
+#933    462   1233   3069   1087    297 
+
+p <- FeaturePlot(hOLglia_allESCs, features = "TNS3", label = TRUE, label.size = 6,
+                 pt.size = 0.4, ncol = 1, cols = c("lightgrey", "red")) +
+  scale_color_viridis(alpha = 1, begin = 0, end = 1, direction = -1,
+                      discrete = FALSE, option = "A")
+ggsave("FeaturePlot_hOLglia_allESCs_TNS3.pdf", width = 12, height = 8)
+
+
+head(hOLglia_allESCs@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA day integrated_snn_res.0.8 seurat_clusters integrated_snn_res.0.4 clusters
+#d77_CATCCTAATGTC        d77      16420         4861 d77                      5               1                      1     cOPC
+#d77_ATGATCTCGTTT        d77      13445         4425 d77                      5               1                      1     cOPC
+#d77_CTAATATGTGAA        d77      11219         4124 d77                      5               1                      1     cOPC
+#d77_TTGTTCCTGGTT        d77      10198         3825 d77                      0               2                      2     iOL1
+#d77_TTGTCACACAGT        d77      12729         4333 d77                      5               1                      1     cOPC
+#d77_ACCTTGGCTTCT        d77      10996         3981 d77                      7               1                      1     cOPC
+levels(hOLglia_allESCs)
+#"NSC"    "priOPC" "cycOPC" "OPC"    "iOL1"   "iOL2" 
+
+names(new.cluster.ids) <- levels(hOLglia_allESCs)
+hOLglia_allESCs <- RenameIdents(hOLglia_allESCs, new.cluster.ids)
+hOLglia_allESCs[["final_clusters"]] <- Idents(hOLglia_allESCs) #this creates the "final_clusters" column
+head(hOLglia_allESCs@meta.data)
+#                 orig.ident nCount_RNA nFeature_RNA day integrated_snn_res.0.8 seurat_clusters integrated_snn_res.0.4 clusters final_clusters
+#d77_CATCCTAATGTC        d77      16420         4861 d77                      5               1                      1     cOPC            OPC
+#d77_ATGATCTCGTTT        d77      13445         4425 d77                      5               1                      1     cOPC            OPC
+#d77_CTAATATGTGAA        d77      11219         4124 d77                      5               1                      1     cOPC            OPC
+#d77_TTGTTCCTGGTT        d77      10198         3825 d77                      0               2                      2     iOL1           iOL1
+#d77_TTGTCACACAGT        d77      12729         4333 d77                      5               1                      1     cOPC            OPC
+#d77_ACCTTGGCTTCT        d77      10996         3981 d77                      7               1                      1     cOPC            OPC
+#
+#
+##################################################################
+#New visualizations
+################################################################# 
+
+DimPlot(hPDGFRa_Tom_allESCs, reduction = "umap", label= T, label.size =6, repel = TRUE, pt.size = 0.4) 
+ggsave("hPDGFRa_Tom_allESCs_cluster_names.pdf", width = 12, height = 7.4)
+
+#To visualize the two conditions side-by-side, we can use the split.by argument to show each condition colored by cluster.
+
+DimPlot(hPDGFRa_Tom_allESCs, reduction = "umap", split.by = "day", order = -1, label= T, label.size =6, repel = TRUE, pt.size = 0.4) + NoLegend()
+ggsave("hPDGFRa_Tom_allESCs_cluster_names_split.pdf", width = 20, height = 6)
+
+
+# key markers
+genes <- as.vector(toupper(c( "Vim","Hes1", "Id1", "Sox11","Sox4", "Dcx","Mki67","Top2a", "Pcna",  "Ascl1","Cspg4","Pdgfra", "Olig2",  "Olig1","Sox10", "Gpr17", "Nkx2-2", "Itpr2", "Enpp6",
+  "Tns3", "Slc9a3r2","Igsf8", "Cnp", "Mag", "Mbp", "Plp1", "Mog", "Mgst3", "Pmp22", "Neat1", "Grm3", "Il33")))
+p <- DotPlot(object = hPDGFRa_Tom_allESCs,  dot.scale = 12, features = genes) 
+q <- p + theme_grey() 
+q + theme(axis.text.x = element_text(size=12, face = "bold", angle = 30,color = "black",  hjust = 1),
+  axis.text.y = element_text(size=12,face = "bold")) + 
+  scale_color_viridis(alpha = 1, begin = 0.2, end = 1, direction = -1,
+    discrete = FALSE, option = "D") + 
+  labs(x=NULL, y=NULL)
+ggsave("DotPlot_Tensin3_hPDGFRa_Tom_allESCs.pdf", width = 14, height = 5.5)
+
+
+p <- FeaturePlot(hPDGFRa_Tom_allESCs, features = "TNS3", label = TRUE, label.size = 6,
+  pt.size = 0.4, ncol = 1, cols = c("lightgrey", "red")) +
+  scale_color_viridis(alpha = 1, begin = 0, end = 1, direction = -1,
+    discrete = FALSE, option = "A")
+ggsave("FeaturePlot_hPDGFRa_Tom_allESCs_TNS3.pdf", width = 12, height = 8)
+
+############################################################################################################
+#At the end we saved RDS files for  object
+############################################################################################################
+
+saveRDS(hOLglia_allESCs, file = "hOLglia_allESCs.rds") 
+
+
+
